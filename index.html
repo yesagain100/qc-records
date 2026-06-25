@@ -29,6 +29,13 @@
   .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
   .controls input,.controls select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff}
   .controls input[type=search]{min-width:240px;flex:1}
+  #colsBtn{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
+  #colMgr{display:none;position:absolute;right:0;top:42px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:10px;max-height:62vh;overflow:auto;width:230px}
+  #colMgr.show{display:block}
+  #colMgr .hd{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+  #colMgr .ci{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:6px;cursor:grab;font-size:13px;border-top:2px solid transparent}
+  #colMgr .ci:hover{background:#f4f6fa}#colMgr .ci.dragover{border-top:2px solid var(--orange)}
+  #colMgr .gw{cursor:grab;color:var(--muted)}
   .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block;letter-spacing:.3px}
   .pill.PASS{background:#e4f6ec;color:var(--ok)}.pill.FAIL,.pill.REJECT{background:#fae3e3;color:var(--bad)}
   .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
@@ -118,13 +125,9 @@
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> hide test/verify</label>
+      <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
     </div>
-    <table id="tbl"><thead><tr>
-      <th data-k="tested_at">Date</th><th data-k="serial">Serial</th><th data-k="model">Model</th>
-      <th data-k="year">Year</th><th data-k="technician">Tech</th><th data-k="department">Dept</th>
-      <th data-k="grade">Grade</th><th data-k="result">Result</th><th data-k="batt">Battery</th>
-      <th data-k="storage">Storage</th><th data-k="lot_id">Lot</th><th>Faults</th>
-    </tr></thead><tbody id="rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
+    <table id="tbl"><thead id="thead"></thead><tbody id="rows"><tr><td colspan="20" class="empty">Loading…</td></tr></tbody></table>
     <footer id="foot"></footer>
   </div>
   <div id="analysisTab" style="display:none"></div>
@@ -184,6 +187,53 @@ const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,
 const battTxt=r=>r.batt_h!=null?`${Math.min(100,r.batt_h)}% · ${r.batt_c??"?"} cyc`:"—";
 const specLine=r=>[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":""),r.year].filter(Boolean).join(" · ");
 
+// ---- customizable table columns (show/hide + drag to reorder) ---------------
+const ALLCOLS=[
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtDate(r.tested_at)}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
+  {key:"year",label:"Year",sk:"year",html:r=>`<td class="muted">${r.year||""}</td>`},
+  {key:"memory",label:"RAM",sk:"memory",html:r=>`<td>${r.memory?r.memory+" GB":"—"}</td>`},
+  {key:"storage",label:"SSD",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
+  {key:"colour",label:"Colour",sk:"colour",html:r=>`<td>${r.colour||"—"}</td>`},
+  {key:"sku",label:"YesAgain SKU",sk:"sku",html:r=>`<td class="mono">${r.sku||"—"}</td>`},
+  {key:"display_grade",label:"LCD grade",sk:"display_grade",html:r=>`<td class="gr ${r.display_grade}">${r.display_grade||"—"}</td>`},
+  {key:"body_grade",label:"Body grade",sk:"body_grade",html:r=>`<td class="gr ${r.body_grade}">${r.body_grade||"—"}</td>`},
+  {key:"grade",label:"Overall grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
+  {key:"chip",label:"CPU / Chip",sk:"chip",html:r=>`<td class="muted">${r.chip||"—"}</td>`},
+  {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${r.cpu_speed||"—"}</td>`},
+  {key:"cores",label:"Cores C/G",html:r=>`<td class="muted">${[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / ")||"—"}</td>`},
+  {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
+  {key:"technician",label:"Technician",sk:"technician",html:r=>`<td>${r.technician||"—"}</td>`},
+  {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
+  {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
+  {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
+  {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults">${r.faults||""}</td>`},
+];
+const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","faults"];
+let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice();
+function loadCols(){try{const s=JSON.parse(localStorage.getItem("qcCols")||"null");
+  if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));}}catch(e){}}
+function saveCols(){localStorage.setItem("qcCols",JSON.stringify({order:ORDER,visible:VIS}));}
+function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
+function renderHead(){const cols=visCols();
+  document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th ${c.sk?`data-k="${c.sk}"`:""}>${c.label}</th>`).join("")+"</tr>";
+  document.querySelectorAll("#thead th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});}
+let dragK=null;
+function renderColMgr(){const m=document.getElementById("colMgr");
+  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=ALLCOLS.find(x=>x.key===k);
+    return `<div class="ci" draggable="true" data-k="${k}"><span class="gw">⠿</span><input type="checkbox" ${VIS.includes(k)?"checked":""}> ${c.label}</div>`;}).join("");
+  m.querySelectorAll(".ci").forEach(el=>{const k=el.dataset.k;
+    el.querySelector("input").onchange=e=>{if(e.target.checked){if(!VIS.includes(k))VIS.push(k);}else VIS=VIS.filter(x=>x!==k);saveCols();renderHead();render();};
+    el.ondragstart=()=>dragK=k;
+    el.ondragover=e=>{e.preventDefault();el.classList.add("dragover");};
+    el.ondragleave=()=>el.classList.remove("dragover");
+    el.ondrop=e=>{e.preventDefault();el.classList.remove("dragover");if(!dragK||dragK===k)return;
+      const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
+
 async function load(){
   document.getElementById("err").style.display="none";
   try{
@@ -217,14 +267,9 @@ function render(){
   const passRate=real.length?Math.round(pass/real.length*100):0;
   document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate"],[fail,"fail / reject"],[last7,"in last 7 days"]]
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
-  const tb=document.getElementById("rows");
-  if(!ROWS.length)tb.innerHTML='<tr><td colspan="12" class="empty">No records match.</td></tr>';
-  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})">
-    <td class="muted">${fmtDate(r.tested_at)}</td><td class="mono">${r.serial||"—"}</td><td>${r.model||"—"}</td>
-    <td class="muted">${r.year||""}</td><td>${r.technician||"—"}</td><td class="muted">${r.department||""}</td>
-    <td class="gr ${r.grade}">${r.grade||"—"}</td><td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>
-    <td>${battTxt(r)}</td><td>${r.storage?r.storage+" GB":"—"}</td><td class="muted">${r.lot_id||""}</td>
-    <td class="faults">${r.faults||""}</td></tr>`).join("");
+  const cols=visCols(),tb=document.getElementById("rows");
+  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length||1}" class="empty">No records match.</td></tr>`;
+  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})">`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
   document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
   renderAnalysis(real);
 }
@@ -351,7 +396,9 @@ function csv(){
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));t.classList.add("on");
   const a=t.dataset.t==="analysis";document.getElementById("analysisTab").style.display=a?"block":"none";document.getElementById("recordsTab").style.display=a?"none":"block";});
-document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+loadCols();renderHead();
+document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
+document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
 ["q","fResult","fGrade","fTech","hideTest"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
