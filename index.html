@@ -50,7 +50,7 @@
   th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap}
   th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
   tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
-  td.faults{white-space:normal;max-width:280px;color:var(--bad);font-size:12px}
+  td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;color:var(--bad);font-size:12px}
   td.mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
   .muted{color:var(--muted)}.empty{padding:40px;text-align:center;color:var(--muted)}
   /* analysis */
@@ -127,6 +127,7 @@
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> hide test/verify</label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
       <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
     </div>
     <table id="tbl"><thead id="thead"></thead><tbody id="rows"><tr><td colspan="20" class="empty">Loading…</td></tr></tbody></table>
@@ -212,7 +213,7 @@ const ALLCOLS=[
   {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
   {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
   {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
-  {key:"faults",label:"Faults",html:r=>`<td class="faults">${r.faults||""}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
 const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","faults"];
 let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice();
@@ -257,6 +258,12 @@ function current(){
     if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
     if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
+  // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
+  if(document.getElementById("uniqSerial").checked){
+    const m=new Map();
+    for(const r of rows){const k=(r.serial||r.id).toUpperCase();const e=m.get(k);
+      if(!e||(r.tested_at||"")>(e.tested_at||""))m.set(k,r);}
+    rows=[...m.values()];}
   rows.sort((a,b)=>{let x=a[sortK]??"",y=b[sortK]??"";if(sortK==="batt"){x=a.batt_h??-1;y=b.batt_h??-1;}if(sortK==="storage"){x=a.storage??-1;y=b.storage??-1;}
     return(x>y?1:x<y?-1:0)*sortDir;});
   return rows;}
@@ -396,7 +403,7 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelect
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","hideTest"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","hideTest","uniqSerial"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------
