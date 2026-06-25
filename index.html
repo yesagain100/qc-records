@@ -55,7 +55,7 @@
   .rsz:hover{background:var(--orange)}
   th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
   tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
-  td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;color:var(--bad);font-size:12px}
+  td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--bad);font-size:12px}
   td.mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
   .muted{color:var(--muted)}.empty{padding:40px;text-align:center;color:var(--muted)}
   /* analysis */
@@ -133,6 +133,7 @@
       <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> hide test/verify</label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
       <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
@@ -281,9 +282,12 @@ function current(){
   const q=document.getElementById("q").value.toLowerCase().trim();
   const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
   const ft=document.getElementById("fTech").value,hide=document.getElementById("hideTest").checked;
+  const df=document.getElementById("dFrom").value,dt=document.getElementById("dTo").value;
   let rows=RAW.filter(r=>{
     if(hide&&isTest(r._raw))return false;
     if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
+    const d=(r.tested_at||"").slice(0,10);
+    if(df&&d<df)return false;if(dt&&d>dt)return false;
     if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
   // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
@@ -461,7 +465,7 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelect
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","hideTest","uniqSerial"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------
