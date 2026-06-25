@@ -148,9 +148,26 @@ function normResult(r){const v=(r||"").toUpperCase();
   if(v.includes("REJECT"))return"REJECT";if(v.includes("INCOMPLETE"))return"INCOMPLETE";
   if(v.startsWith("PASS"))return"PASS";if(v.startsWith("FAIL"))return"FAIL";return v?"OTHER":"";}
 function num(v){if(v==null)return null;const n=parseInt(String(v).replace(/[^0-9-]/g,""),10);return isNaN(n)?null:n;}
+// Failed checks are stored by their POSITIVE check-name (e.g. "Battery drain normal under
+// load"), which reads like a pass. Map them to plain fault wording so the column shows only
+// real faults, clearly worded. Unknown / actual marked defects (a real scratch) pass through.
+const FAULT_MAP={
+  "Boots to macOS / chip detected":"Won't boot / chip not detected","Battery drain normal under load":"Abnormal battery drain",
+  "Battery ≥ 85% capacity & not Service-recommended":"Battery <85% / service-recommended","No battery swelling / case bulge (safety)":"Battery swelling / case bulge",
+  "Fans spin / thermals OK":"Fan / thermal fault","RAM test passed":"RAM fault","No unusual noise / rattles":"Unusual noise / rattle",
+  "SSD detected":"SSD not detected","SSD write speed acceptable":"SSD slow / failing","Display — no dead pixels / lines":"Display: dead pixels / lines",
+  "True Tone / brightness range OK":"True Tone / brightness fault","All keys register":"Keyboard: key(s) not registering","Layout & language match":"Keyboard layout mismatch",
+  "Keyboard backlight works":"Keyboard backlight fault","Touch Bar lights & responds":"Touch Bar fault","Trackpad gestures + click":"Trackpad fault",
+  "Touch ID button works":"Touch ID fault","Wi-Fi connects":"Wi-Fi fault","Bluetooth pairs":"Bluetooth fault","All USB-C / Thunderbolt ports":"USB-C / port fault",
+  "Speakers — L/R channels":"Speaker fault","Microphone records":"Microphone fault","FaceTime camera":"Camera fault","Light sensor responds":"Light sensor fault",
+  "Hinge firm, lid aligned":"Hinge / lid loose or misaligned","Activation Lock OFF":"Activation Lock ON","Not MDM enrolled":"MDM enrolled","Not DEP-assigned":"DEP-assigned",
+  "DEP clear (live check / post-erase)":"DEP not clear","Sleep / wake works":"Sleep / wake fault","No recurring kernel panics":"Kernel panic(s)"};
+function faultPhrase(f){f=String(f).trim().replace(/^Category:\s*/i,"");return f?(FAULT_MAP[f]||f):"";}
 function flat(r){const s=r.snapshot||{};
-  const faults=[r.failed_categories,s.fault1,s.fault2,s.fault3,s.fault4,s.fault5,s.fault6,r.screen_issues,r.defects]
-    .filter(x=>x&&String(x).trim()).join("; ");
+  const faults=[...new Set(
+    [r.failed_categories,s.fault1,s.fault2,s.fault3,s.fault4,s.fault5,s.fault6,r.screen_issues,r.defects]
+    .filter(x=>x&&String(x).trim()).flatMap(x=>String(x).split(";")).map(faultPhrase).filter(Boolean)
+  )].join("; ");
   return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
     technician:r.technician||s.technician||"",department:s.department||"",
