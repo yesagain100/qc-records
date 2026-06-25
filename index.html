@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YesAgain — QC Records</title>
+<style>
+  :root{--navy:#112747;--navy2:#1c3a5e;--orange:#fbb03b;--ink:#1b2430;--muted:#64748b;
+    --ok:#1e9e57;--bad:#cf3b3b;--watch:#c8881b;--blue:#3b82c4;--line:#e3e8f0;--bg:#f4f6fa;--panel:#fff;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--navy);color:#fff;padding:14px 26px;border-bottom:4px solid var(--orange);
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  header .logo{font-size:22px;font-weight:800}header .logo span{color:var(--orange)}
+  header h1{font-size:14px;font-weight:500;color:#b9c6dc;margin:0}header .sp{flex:1}
+  header button{background:var(--orange);color:var(--navy);border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:13px}
+  header button.ghost{background:transparent;color:#cdd8ea;border:1px solid #34527a}
+  .lookup{background:var(--navy2);padding:12px 26px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:56px;z-index:19}
+  .lookup input{flex:1;min-width:260px;max-width:520px;padding:11px 14px;border:0;border-radius:9px;font-size:15px;font-family:ui-monospace,Menlo,monospace}
+  .lookup label{color:#cdd8ea;font-weight:700;font-size:13px}
+  .lookup button{background:#fff;color:var(--navy);border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .tabs{display:flex;gap:8px;padding:14px 26px 0;max-width:1500px;margin:0 auto}
+  .tab{padding:9px 18px;border-radius:9px 9px 0 0;background:#e7ecf3;color:var(--navy);font-weight:700;cursor:pointer;border:1px solid var(--line);border-bottom:0}
+  .tab.on{background:var(--panel);color:var(--orange)}
+  .wrap{max-width:1500px;margin:0 auto;padding:14px 22px 60px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .n{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}.stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .controls input,.controls select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff}
+  .controls input[type=search]{min-width:240px;flex:1}
+  .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block;letter-spacing:.3px}
+  .pill.PASS{background:#e4f6ec;color:var(--ok)}.pill.FAIL,.pill.REJECT{background:#fae3e3;color:var(--bad)}
+  .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
+  .gr{font-weight:800}.gr.A{color:#1e9e57}.gr.B{color:#3b82c4}.gr.C{color:#c8881b}.gr.D{color:#cf3b3b}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
+  tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
+  td.faults{white-space:normal;max-width:280px;color:var(--bad);font-size:12px}
+  td.mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+  .muted{color:var(--muted)}.empty{padding:40px;text-align:center;color:var(--muted)}
+  /* analysis */
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .chart h3{margin:0 0 12px;font-size:13px;color:var(--navy);text-transform:uppercase;letter-spacing:.4px}
+  .bar{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
+  .bar .lab{width:150px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .track{flex:1;background:#eef2f8;border-radius:6px;height:18px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:6px;background:var(--navy)}
+  .bar .v{width:54px;flex:none;text-align:right;font-weight:700;color:var(--navy)}
+  .days{display:flex;align-items:flex-end;gap:3px;height:90px}
+  .days .d{flex:1;background:var(--orange);border-radius:3px 3px 0 0;min-height:2px}
+  .days .dl{display:flex;gap:3px;font-size:9px;color:var(--muted);margin-top:4px}
+  .modal{position:fixed;inset:0;background:rgba(10,20,40,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px;overflow:auto}
+  .modal.show{display:flex}
+  .card{background:#fff;border-radius:14px;max-width:780px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .card .top{background:var(--navy);color:#fff;padding:16px 22px;border-radius:14px 14px 0 0;display:flex;align-items:center;gap:12px}
+  .card .top .x{margin-left:auto;cursor:pointer;font-size:22px;color:#cdd8ea}
+  .card .top button{background:var(--orange);color:var(--navy);border:0;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer}
+  .card .body{padding:18px 22px}
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:6px 14px;font-size:13px}.kv dt{color:var(--muted)}.kv dd{margin:0;font-weight:600}
+  .sec{font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
+  .err{background:#fae3e3;color:var(--bad);padding:12px 16px;border-radius:8px;margin-bottom:14px;font-size:13px;display:none}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
+  #scanWrap{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+  #scanWrap video{max-width:90vw;max-height:70vh;border-radius:12px;border:3px solid var(--orange)}
+  #scanWrap button{background:#fff;border:0;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer}
+  /* label print */
+  #labelArea{position:absolute;left:-9999px;top:0}
+  .label{width:384px;padding:12px 14px;font-family:-apple-system,Arial,sans-serif;color:#000;border:1px solid #000}
+  .label .lh{display:flex;align-items:center;gap:8px;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px}
+  .label .lh .res{font-size:20px;font-weight:900}.label .lh .gr{font-size:14px;font-weight:800;border:2px solid #000;border-radius:6px;padding:1px 7px}
+  .label .lm{font-size:13px;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;letter-spacing:1px}
+  .label .lg{font-size:10px;line-height:1.5;margin-top:4px}
+  @media print{ body *{visibility:hidden} #labelArea,#labelArea *{visibility:visible} #labelArea{position:absolute;left:0;top:0}
+    @page{size:102mm 51mm;margin:3mm} }
+  #login{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:100}
+  #login .box{background:#fff;border-radius:16px;padding:30px 32px;width:330px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  #login .lg{font-size:26px;font-weight:800;color:var(--navy)}#login .lg span{color:var(--orange)}
+  #login h2{font-size:16px;margin:6px 0 2px;color:var(--navy)}#login .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  #login select,#login input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;margin:6px 0;font-size:15px}
+  #login button{width:100%;background:var(--orange);color:var(--navy);border:0;border-radius:10px;padding:13px;font-weight:800;cursor:pointer;margin-top:10px}
+  #login .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
+  #who{color:#cdd8ea;font-size:13px}
+</style>
+</head>
+<body>
+<div id="login"><div class="box">
+  <div class="lg">yes<span>again</span></div><h2>QC Records</h2>
+  <div class="sub">Sign in with your Yes Check account</div>
+  <select id="luser"><option>Loading accounts…</option></select>
+  <input id="lpin" type="password" placeholder="PIN" autocomplete="off">
+  <button id="lbtn">Sign in</button>
+  <div class="err" id="lerr"></div>
+</div></div>
+<header>
+  <div class="logo">yes<span>again</span></div><h1>Quality-Control Records</h1>
+  <div class="sp"></div>
+  <span id="who"></span>
+  <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ CSV</button>
+  <button class="ghost" id="logout">Sign out</button>
+</header>
+<div class="lookup">
+  <label>🔎 Scan / serial:</label>
+  <input id="lk" placeholder="Scan the device barcode or type a serial, then Enter…" autocomplete="off">
+  <button id="scanBtn">📷 Scan with camera</button>
+</div>
+<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div></div>
+
+<div class="wrap">
+  <div class="err" id="err"></div>
+  <div id="recordsTab">
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Filter serial, model, technician, lot, PO…">
+      <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
+      <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
+      <select id="fTech"><option value="">All technicians</option></select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> hide test/verify</label>
+    </div>
+    <table id="tbl"><thead><tr>
+      <th data-k="tested_at">Date</th><th data-k="serial">Serial</th><th data-k="model">Model</th>
+      <th data-k="year">Year</th><th data-k="technician">Tech</th><th data-k="department">Dept</th>
+      <th data-k="grade">Grade</th><th data-k="result">Result</th><th data-k="batt">Battery</th>
+      <th data-k="storage">Storage</th><th data-k="lot_id">Lot</th><th>Faults</th>
+    </tr></thead><tbody id="rows"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody></table>
+    <footer id="foot"></footer>
+  </div>
+  <div id="analysisTab" style="display:none"></div>
+</div>
+
+<div class="modal" id="modal"><div class="card">
+  <div class="top"><b id="mTitle"></b><button onclick="printLabel()">🖨 Print label</button><span class="x" onclick="closeModal()">×</span></div>
+  <div class="body" id="mBody"></div>
+</div></div>
+<div id="scanWrap"><video id="scanVid" playsinline></video><button onclick="stopScan()">Cancel</button><div style="color:#fff;font-size:13px">Point the camera at the device barcode / QR</div></div>
+<div id="labelArea"></div>
+
+<script>
+const SUPA="https://qulzvyhcpphntzuwyrnz.supabase.co";
+const KEY="sb_publishable_Cvk7Yshzceynd0jh9Znd6Q__Tearm51";
+let RAW=[],ROWS=[],sortK="tested_at",sortDir=-1,CURRENT=null;
+const TEST_MARKERS=["PUBKEY","VERIFY","E2E","DEMO","SAMPLE","TEST-"];
+const isTest=r=>{const s=(r.serial||"").toUpperCase(),t=(r.technician||"").toLowerCase();
+  return TEST_MARKERS.some(m=>s.includes(m))||["verify","test","demo","e2e bot",""].includes(t);};
+function normResult(r){const v=(r||"").toUpperCase();
+  if(v.includes("REJECT"))return"REJECT";if(v.includes("INCOMPLETE"))return"INCOMPLETE";
+  if(v.startsWith("PASS"))return"PASS";if(v.startsWith("FAIL"))return"FAIL";return v?"OTHER":"";}
+function num(v){if(v==null)return null;const n=parseInt(String(v).replace(/[^0-9-]/g,""),10);return isNaN(n)?null:n;}
+function flat(r){const s=r.snapshot||{};
+  const faults=[r.failed_categories,s.fault1,s.fault2,s.fault3,s.fault4,s.fault5,s.fault6,r.screen_issues,r.defects]
+    .filter(x=>x&&String(x).trim()).join("; ");
+  return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
+    model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
+    technician:r.technician||s.technician||"",department:s.department||"",
+    grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
+    result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
+    batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
+    batt_cond:r.battery_condition||s.battery_condition||"",colour:r.colour||s.colour||"",
+    storage:num(r.storage_total_gb??s.storage_total_gb),wifi:r.wifi_ssid||s.wifi_ssid||"",
+    lot_id:s.lot_id||"",po:s.po||"",supplier:s.supplier||"",sku:s.sku||"",part_number:s.part_number||"",
+    cpu_speed:s.cpu_speed||"",cpu_cores:s.cpu_cores||"",gpu_cores:s.gpu_cores||"",
+    kbd_layout:s.kbd_layout||"",kbd_language:s.kbd_language||"",photos:s.photo_count||0,
+    perf_score:r.perf_score||s.perf_score||"",notes:r.notes||s.notes||"",faults,_raw:r};}
+const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"})+" "+x.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});}catch(e){return d||"—";}};
+const battTxt=r=>r.batt_h!=null?`${Math.min(100,r.batt_h)}% · ${r.batt_c??"?"} cyc`:"—";
+const specLine=r=>[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":""),r.year].filter(Boolean).join(" · ");
+
+async function load(){
+  document.getElementById("err").style.display="none";
+  try{
+    const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=10000`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(!res.ok)throw new Error("HTTP "+res.status);
+    RAW=(await res.json()).map(flat);fillTechs();render();
+  }catch(e){const el=document.getElementById("err");el.style.display="block";
+    el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
+    document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
+}
+function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.technician).filter(Boolean))].sort();
+  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");}
+function current(){
+  const q=document.getElementById("q").value.toLowerCase().trim();
+  const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
+  const ft=document.getElementById("fTech").value,hide=document.getElementById("hideTest").checked;
+  let rows=RAW.filter(r=>{
+    if(hide&&isTest(r._raw))return false;
+    if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
+    if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    return true;});
+  rows.sort((a,b)=>{let x=a[sortK]??"",y=b[sortK]??"";if(sortK==="batt"){x=a.batt_h??-1;y=b.batt_h??-1;}if(sortK==="storage"){x=a.storage??-1;y=b.storage??-1;}
+    return(x>y?1:x<y?-1:0)*sortDir;});
+  return rows;}
+function render(){
+  ROWS=current();const real=ROWS;
+  const units=new Set(real.map(r=>r.serial)).size;
+  const pass=real.filter(r=>r.result==="PASS").length;
+  const fail=real.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
+  const wk=Date.now()-7*864e5,last7=real.filter(r=>{const t=Date.parse(r.tested_at);return t&&t>=wk;}).length;
+  const passRate=real.length?Math.round(pass/real.length*100):0;
+  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate"],[fail,"fail / reject"],[last7,"in last 7 days"]]
+    .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+  const tb=document.getElementById("rows");
+  if(!ROWS.length)tb.innerHTML='<tr><td colspan="12" class="empty">No records match.</td></tr>';
+  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})">
+    <td class="muted">${fmtDate(r.tested_at)}</td><td class="mono">${r.serial||"—"}</td><td>${r.model||"—"}</td>
+    <td class="muted">${r.year||""}</td><td>${r.technician||"—"}</td><td class="muted">${r.department||""}</td>
+    <td class="gr ${r.grade}">${r.grade||"—"}</td><td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>
+    <td>${battTxt(r)}</td><td>${r.storage?r.storage+" GB":"—"}</td><td class="muted">${r.lot_id||""}</td>
+    <td class="faults">${r.faults||""}</td></tr>`).join("");
+  document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
+  renderAnalysis(real);
+}
+function bars(map,color,limit){const ent=Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,limit||99);
+  const mx=Math.max(1,...ent.map(e=>e[1]));
+  return ent.map(([k,v])=>`<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${color||'var(--navy)'}"></div></div><div class="v">${v}</div></div>`).join("")||'<div class="muted">No data.</div>';}
+function renderAnalysis(real){
+  const byRes={},byGr={},byModel={},byTech={},faults={};
+  real.forEach(r=>{byRes[r.result||"—"]=(byRes[r.result||"—"]||0)+1;
+    byGr[r.grade||"—"]=(byGr[r.grade||"—"]||0)+1;
+    if(r.model)byModel[r.model]=(byModel[r.model]||0)+1;
+    if(r.technician)byTech[r.technician]=(byTech[r.technician]||0)+1;
+    (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean).forEach(f=>{
+      const key=f.replace(/\s*\(.*?\)\s*/g,"").replace(/^Category:\s*/i,"").trim();
+      if(key)faults[key]=(faults[key]||0)+1;});});
+  // tests per day, last 30
+  const days={};for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);days[d]=0;}
+  real.forEach(r=>{const d=(r.tested_at||"").slice(0,10);if(d in days)days[d]++;});
+  const dv=Object.values(days),dmx=Math.max(1,...dv);
+  const resColor={PASS:'var(--ok)',FAIL:'var(--bad)',REJECT:'var(--bad)',INCOMPLETE:'var(--watch)'};
+  const resBars=Object.entries(byRes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const mx=Math.max(1,...Object.values(byRes));
+    return `<div class="bar"><div class="lab"><span class="pill ${k}">${k}</span></div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${resColor[k]||'var(--muted)'}"></div></div><div class="v">${v}</div></div>`;}).join("");
+  document.getElementById("analysisTab").innerHTML=`
+    <div class="grid2">
+      <div class="chart"><h3>⚠️ Top faults (this is your defect analysis)</h3>${bars(faults,'var(--bad)',14)}</div>
+      <div class="chart"><h3>Result breakdown</h3>${resBars||'<div class="muted">No data.</div>'}</div>
+      <div class="chart"><h3>Grade distribution</h3>${bars(byGr,'var(--blue)',8)}</div>
+      <div class="chart"><h3>By technician</h3>${bars(byTech,'var(--navy)',12)}</div>
+      <div class="chart"><h3>By model</h3>${bars(byModel,'var(--navy2)',12)}</div>
+      <div class="chart"><h3>Tests per day — last 30 days</h3>
+        <div class="days">${dv.map(v=>`<div class="d" title="${v}" style="height:${Math.round(v/dmx*100)}%"></div>`).join("")}</div>
+        <div class="muted" style="font-size:11px;margin-top:6px">${Object.keys(days)[0].slice(5)} → today · peak ${dmx}/day</div>
+      </div>
+    </div>`;
+}
+function openModal(i){const r=ROWS[i];CURRENT=r;
+  document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
+  const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  document.getElementById("mBody").innerHTML=`
+    <dl class="kv">
+      ${row("Result",`<span class="pill ${r.result||'OTHER'}">${r.result}</span> <span class="muted">(${r.result_raw})</span>`)}
+      ${row("Overall grade",`<span class="gr ${r.grade}">${r.grade}</span>`)}
+      ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
+      ${row("Tested",fmtDate(r.tested_at))}${row("Technician",r.technician)}${row("Department",r.department)}</dl>
+    <div class="sec">Specification</div><dl class="kv">
+      ${row("Serial",r.serial)}${row("Model",r.model)}${row("Year",r.year)}${row("Chip",r.chip)}
+      ${row("CPU speed",r.cpu_speed)}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / "))}
+      ${row("RAM",r.memory?r.memory+" GB":"")}${row("SSD / Storage",r.storage?r.storage+" GB":"")}
+      ${row("Colour",r.colour)}${row("SKU",r.sku)}${row("Part number",r.part_number)}
+      ${row("Keyboard",[r.kbd_layout,r.kbd_language].filter(Boolean).join(" · "))}</dl>
+    <div class="sec">Battery &amp; performance</div><dl class="kv">
+      ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
+      ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
+    <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
+    ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
+    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}`;
+  document.getElementById("modal").classList.add("show");}
+function closeModal(){document.getElementById("modal").classList.remove("show");}
+document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
+
+// ---- serial / barcode lookup ------------------------------------------------
+function lookupSerial(s){s=(s||"").trim();if(!s)return;
+  // a scanner may append junk; match the longest record whose serial is contained
+  const hit=RAW.find(r=>r.serial && (r.serial.toUpperCase()===s.toUpperCase()))||
+            RAW.find(r=>r.serial && s.toUpperCase().includes(r.serial.toUpperCase()));
+  if(!hit){alert("No QC record found for: "+s);return;}
+  // newest record for that serial
+  const all=RAW.filter(r=>r.serial===hit.serial).sort((a,b)=>(b.tested_at>a.tested_at?1:-1));
+  ROWS=all;openModal(0);}
+document.getElementById("lk").addEventListener("keydown",e=>{if(e.key==="Enter"){lookupSerial(e.target.value);e.target.select();}});
+
+// camera scan (Safari 17+/Chrome via the native BarcodeDetector — no library)
+let scanStream=null,scanTimer=null;
+async function startScan(){
+  if(!('BarcodeDetector'in window)){alert("Camera scanning needs Safari 17+ or Chrome. A handheld scanner works into the box above, or type the serial.");return;}
+  try{scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});}
+  catch(e){alert("Camera unavailable: "+e.message);return;}
+  const v=document.getElementById("scanVid");v.srcObject=scanStream;await v.play();
+  document.getElementById("scanWrap").style.display="flex";
+  const det=new BarcodeDetector({formats:["qr_code","code_128","code_39","ean_13","data_matrix"]});
+  scanTimer=setInterval(async()=>{try{const codes=await det.detect(v);
+    if(codes.length){const s=codes[0].rawValue;stopScan();document.getElementById("lk").value=s;lookupSerial(s);}}catch(e){}},400);}
+function stopScan(){if(scanTimer)clearInterval(scanTimer);if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
+  scanStream=null;document.getElementById("scanWrap").style.display="none";}
+document.getElementById("scanBtn").onclick=startScan;
+
+// ---- label reprint (Code 128 barcode, native window.print) ------------------
+const C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"");
+  const vals=[104];for(const ch of text)vals.push(ch.charCodeAt(0)-32);
+  let sum=104;for(let i=1;i<vals.length;i++)sum+=vals[i]*i;vals.push(sum%103);vals.push(106);
+  let mods="";vals.forEach(v=>mods+=C128[v]);
+  let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
+  return `<svg width="${x}" height="${h}" viewBox="0 0 ${x} ${h}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%">${rects}</svg>`;}
+function printLabel(){const r=CURRENT;if(!r)return;
+  document.getElementById("labelArea").innerHTML=`<div class="label">
+    <div class="lh"><span class="res">${r.result==="PASS"?"✓ PASS":r.result}</span><span class="gr">Grade ${r.grade||"—"}</span></div>
+    <div class="lm">${r.model||""} ${r.year||""}</div>
+    <div class="ls">${r.serial||""}</div>
+    <div class="lg">${[r.chip,(r.memory?r.memory+"GB RAM":""),(r.storage?r.storage+"GB":""),r.colour].filter(Boolean).join(" · ")}<br>
+      ${[r.sku&&("SKU "+r.sku),(r.batt_h!=null?"Batt "+Math.min(100,r.batt_h)+"%":""),"Tech: "+(r.technician||"—"),fmtDate(r.tested_at)].filter(Boolean).join(" · ")}</div>
+    <div style="margin-top:6px">${code128svg(r.serial,1.4,42)}</div>
+    <div style="font-family:ui-monospace,monospace;font-size:10px;text-align:center">${r.serial||""}</div>
+  </div>`;
+  setTimeout(()=>window.print(),60);}
+
+function csv(){const cols=["tested_at","serial","model","year","chip","memory","storage","technician","department","grade","display_grade","body_grade","result","batt_h","batt_c","batt_cond","colour","sku","lot_id","po","supplier","wifi","faults","notes"];
+  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const lines=[cols.join(",")].concat(ROWS.map(r=>cols.map(c=>esc(c==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[c])).join(",")));
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=`YesAgain QC Records ${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));t.classList.add("on");
+  const a=t.dataset.t==="analysis";document.getElementById("analysisTab").style.display=a?"block":"none";document.getElementById("recordsTab").style.display=a?"none":"block";});
+document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+["q","fResult","fGrade","fTech","hideTest"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
+
+// ---- login gate (same Yes Check accounts via app_login) ---------------------
+async function rpc(fn,args){const r=await fetch(`${SUPA}/rest/v1/rpc/${fn}`,{method:"POST",
+  headers:{apikey:KEY,Authorization:"Bearer "+KEY,"Content-Type":"application/json"},body:JSON.stringify(args||{})});
+  return r.ok?r.json():null;}
+async function fillLoginUsers(){const u=await rpc("app_login_users",{});
+  if(u&&u.length)document.getElementById("luser").innerHTML=u.map(x=>`<option value="${x.username}">${x.display_name||x.username}</option>`).join("");
+  else document.getElementById("luser").innerHTML='<option value="">No accounts found</option>';}
+async function doLogin(){const u=document.getElementById("luser").value,p=document.getElementById("lpin").value;
+  const e=document.getElementById("lerr");if(!u){e.textContent="No account selected.";return;}e.textContent="Signing in…";
+  const j=await rpc("app_login",{p_username:u,p_pin:p});
+  if(j&&j.ok){sessionStorage.setItem("qcUser",j.display_name||u);enter();}
+  else e.textContent=(j&&j.reason)||"Sign-in failed.";}
+function enter(){document.getElementById("login").style.display="none";
+  document.getElementById("who").textContent="Signed in: "+(sessionStorage.getItem("qcUser")||"");load();
+  document.getElementById("lk").focus();}
+function requireLogin(){if(sessionStorage.getItem("qcUser"))enter();
+  else{fillLoginUsers();document.getElementById("login").style.display="flex";}}
+document.getElementById("lbtn").onclick=doLogin;
+document.getElementById("lpin").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+document.getElementById("logout").onclick=()=>{sessionStorage.removeItem("qcUser");location.reload();};
+requireLogin();
+</script>
+</body>
+</html>
