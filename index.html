@@ -347,12 +347,13 @@ function current(){
   return rows;}
 function render(){
   ROWS=current();const real=ROWS;
-  const units=new Set(real.map(r=>r.serial)).size;
-  const pass=real.filter(r=>r.result==="PASS").length;
-  const fail=real.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
+  const uniq=latestPerSerial(real);                       // unique units for the quality numbers
+  const units=uniq.length;
+  const pass=uniq.filter(r=>r.result==="PASS").length;
+  const fail=uniq.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
   const wk=Date.now()-7*864e5,last7=real.filter(r=>{const t=Date.parse(r.tested_at);return t&&t>=wk;}).length;
-  const passRate=real.length?Math.round(pass/real.length*100):0;
-  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate"],[fail,"fail / reject"],[last7,"in last 7 days"]]
+  const passRate=uniq.length?Math.round(pass/uniq.length*100):0;
+  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate (units)"],[fail,"fail / reject (units)"],[last7,"tests in last 7 days"]]
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
   if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
@@ -376,37 +377,40 @@ function rateBars(map){const ent=Object.entries(map).filter(([k])=>k&&k!=="—")
   if(!ent.length)return '<div class="muted">No lot / supplier recorded on these units yet — add it at intake.</div>';
   return ent.map(([k,v])=>{const pct=Math.round(v.fail/v.total*100),col=pct>=20?'var(--bad)':pct>=10?'var(--watch)':'var(--ok)';
     return `<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="v" style="width:auto;min-width:92px">${pct}% <span class="muted" style="font-weight:500">(${v.fail}/${v.total})</span></div></div>`;}).join("");}
-function renderAnalysis(real){
-  const byRes={},byGr={},byModel={},byTech={},faults={},bySup={},byLot={},modelFault={},faultTot={};
+function renderAnalysis(rows){
+  const real=latestPerSerial(rows);          // UNIQUE UNITS only — latest test per serial, no re-test double-counting
+  const byRes={},byGr={},byModel={},byTech={},faults={},bySup={},byLot={},modelFault={},faultTot={},modelDef={};
   real.forEach(r=>{byRes[r.result||"—"]=(byRes[r.result||"—"]||0)+1;
     byGr[r.grade||"—"]=(byGr[r.grade||"—"]||0)+1;
     if(r.model)byModel[r.model]=(byModel[r.model]||0)+1;
     if(r.technician)byTech[r.technician]=(byTech[r.technician]||0)+1;
     const def=isDefective(r)?1:0;
+    if(def&&r.model)modelDef[r.model]=(modelDef[r.model]||0)+1;   // unique DEFECTIVE units of this model
     if(r.supplier){const s=bySup[r.supplier]=bySup[r.supplier]||{total:0,fail:0};s.total++;s.fail+=def;}
     if(r.lot_id){const s=byLot[r.lot_id]=byLot[r.lot_id]||{total:0,fail:0};s.total++;s.fail+=def;}
     splitFaults(r).forEach(f=>{faults[f]=(faults[f]||0)+1;faultTot[f]=(faultTot[f]||0)+1;
       if(r.model){(modelFault[r.model]=modelFault[r.model]||{})[f]=((modelFault[r.model]||{})[f]||0)+1;}});});
-  // model × fault matrix — which models fail at what
+  // model × fault matrix — cells = unique units of that model with the fault; Total = unique defective units
   const topF=Object.entries(faultTot).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
-  const topM=Object.entries(modelFault).map(([m,fs])=>[m,Object.values(fs).reduce((a,b)=>a+b,0)]).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
+  const topM=Object.entries(modelDef).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
   let matrix='<div class="muted">No model / fault data yet.</div>';
-  if(topF.length&&topM.length){matrix=`<div style="overflow-x:auto"><table class="matrix"><tr><th>Model</th>${topF.map(f=>`<th title="${f}">${f}</th>`).join("")}<th>Total</th></tr>`+
-    topM.map(m=>{const fs=modelFault[m]||{},tot=Object.values(fs).reduce((a,b)=>a+b,0);
-      return `<tr><td title="${m}">${m}</td>${topF.map(f=>{const c=fs[f]||0;return `<td class="${c>=3?'hot':c>0?'warm':''}">${c||""}</td>`;}).join("")}<td><b>${tot}</b></td></tr>`;}).join("")+`</table></div>`;}
+  if(topF.length&&topM.length){matrix=`<div style="overflow-x:auto"><table class="matrix"><tr><th>Model</th>${topF.map(f=>`<th title="${f}">${f}</th>`).join("")}<th>Defective units</th></tr>`+
+    topM.map(m=>{const fs=modelFault[m]||{};
+      return `<tr><td title="${m}">${m}</td>${topF.map(f=>{const c=fs[f]||0;return `<td class="${c>=3?'hot':c>0?'warm':''}">${c||""}</td>`;}).join("")}<td><b>${modelDef[m]||0}</b></td></tr>`;}).join("")+`</table></div>`;}
   const days={};for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);days[d]=0;}
-  real.forEach(r=>{const d=(r.tested_at||"").slice(0,10);if(d in days)days[d]++;});
+  rows.forEach(r=>{const d=(r.tested_at||"").slice(0,10);if(d in days)days[d]++;});   // throughput = actual test events
   const dv=Object.values(days),dmx=Math.max(1,...dv);
   const resColor={PASS:'var(--ok)',FAIL:'var(--bad)',REJECT:'var(--bad)',INCOMPLETE:'var(--watch)'};
   const resBars=Object.entries(byRes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const mx=Math.max(1,...Object.values(byRes));
     return `<div class="bar"><div class="lab"><span class="pill ${k}">${k}</span></div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${resColor[k]||'var(--muted)'}"></div></div><div class="v">${v}</div></div>`;}).join("");
   document.getElementById("analysisTab").innerHTML=`
+    <div class="muted" style="font-size:12px;margin:2px 2px 12px">Every figure below counts <b>unique units</b> (latest test per serial) — re-tests are never double-counted. “Tests per day” is the only chart that counts actual test events.</div>
     <div class="grid2">
       <div class="chart"><h3>⚠️ Top faults — defect analysis</h3>${bars(faults,'var(--bad)',14)}</div>
       <div class="chart"><h3>Defect rate by supplier</h3>${rateBars(bySup)}</div>
       <div class="chart"><h3>Defect rate by lot</h3>${rateBars(byLot)}</div>
       <div class="chart"><h3>Result breakdown</h3>${resBars||'<div class="muted">No data.</div>'}</div>
-      <div class="chart" style="grid-column:1/-1"><h3>Faults by model — who fails at what (top 8 models × top 6 faults)</h3>${matrix}</div>
+      <div class="chart" style="grid-column:1/-1"><h3>Faults by model — unique units (top 8 models × top 6 faults)</h3>${matrix}</div>
       <div class="chart"><h3>Grade distribution</h3>${bars(byGr,'var(--blue)',8)}</div>
       <div class="chart"><h3>By model — volume</h3>${bars(byModel,'var(--navy2)',12)}</div>
       <div class="chart"><h3>By technician</h3>${bars(byTech,'var(--navy)',12)}</div>
@@ -420,10 +424,13 @@ function renderAnalysis(real){
 // ===== LOT REPORT — pick a lot → full defect detail for QC team / supplier claims =====
 // Lot analysis works off the full deduped dataset (latest test per serial), independent of
 // the Records-tab filters, so a lot always shows every unit that passed through it.
-function lotBase(){const m=new Map();
-  for(const r of RAW){if(isTest(r._raw))continue;const k=(r.serial||r.id).toUpperCase();const e=m.get(k);
+// Collapse a list of test rows to UNIQUE UNITS — the latest test per serial. Every
+// analysis runs through this so a re-tested unit is never double-counted.
+function latestPerSerial(rows){const m=new Map();
+  for(const r of rows){const k=(r.serial||r.id||"").toUpperCase();const e=m.get(k);
     if(!e||(r.tested_at||"")>(e.tested_at||""))m.set(k,r);}
   return [...m.values()];}
+function lotBase(){return latestPerSerial(RAW.filter(r=>!isTest(r._raw)));}
 let LOT_SEL="",LOTDEF=[];
 function lotUnits(){return lotBase().filter(r=>r.lot_id===LOT_SEL);}
 function dchip(d){return d?fmtDate(d).split(" ").slice(0,3).join(" "):"—";}
