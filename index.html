@@ -55,6 +55,13 @@
   .rsz:hover{background:var(--orange)}
   th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
   tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
+  .hrow{border-top:1px solid var(--line)}
+  .hsum{display:flex;align-items:center;gap:10px;padding:7px 6px;cursor:pointer;font-size:13px}
+  .hsum:hover{background:#f7faff}
+  .hcar{color:var(--muted);transition:transform .15s;display:inline-block}
+  .hrow.open>.hsum .hcar{transform:rotate(90deg)}
+  .hdet{display:none;padding:4px 6px 12px 26px;background:#fafcff}
+  .hrow.open>.hdet{display:block}
   td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--bad);font-size:12px}
   td.mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
   .muted{color:var(--muted)}.empty{padding:40px;text-align:center;color:var(--muted)}
@@ -134,7 +141,7 @@
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
-      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> hide test/verify</label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
       <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
     </div>
@@ -415,20 +422,29 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
 function printLabel(){if(CURRENT)printLabels([CURRENT]);}
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
 // Full QC history for one unit (all prior tests on the same serial).
+function histDetailHTML(x){const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  return `<dl class="kv" style="font-size:12px">
+    ${row("Result",x.result_raw||x.result)}${row("Grade",`${x.grade||"—"} (LCD ${x.display_grade||"—"} / Body ${x.body_grade||"—"})`)}
+    ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc"+(x.batt_cond?" · "+x.batt_cond:""):"")}
+    ${row("Storage",x.storage?x.storage+" GB":"")}${row("Performance",x.perf_score)}${row("Department",x.department)}
+    ${row("Faults",x.faults?`<span style="color:var(--bad)">${x.faults}</span>`:"none")}
+    ${row("Notes",x.notes)}</dl>`;}
 function historyHTML(r){
   const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
     .sort((a,b)=>(b.tested_at||"")>(a.tested_at||"")?1:-1);
   if(h.length<=1)return `<div class="sec">History</div><div class="muted" style="font-size:13px">Only this one QC test is on record for this serial.</div>`;
-  return `<div class="sec">History — ${h.length} tests on this unit</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <tr style="color:var(--muted);text-align:left"><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Result</th><th style="padding:4px 6px">Grade</th><th style="padding:4px 6px">Tech</th><th style="padding:4px 6px">Faults</th></tr>
-      ${h.map(x=>`<tr style="border-top:1px solid var(--line)">
-        <td style="padding:4px 6px">${fmtDate(x.tested_at)}</td>
-        <td style="padding:4px 6px"><span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span></td>
-        <td style="padding:4px 6px" class="gr ${x.grade}">${x.grade||'—'}</td>
-        <td style="padding:4px 6px">${x.technician||'—'}</td>
-        <td style="padding:4px 6px;color:var(--bad)">${x.faults||''}</td></tr>`).join("")}
-    </table>`;}
+  return `<div class="sec">History — ${h.length} tests on this unit <span class="muted" style="font-weight:400;text-transform:none">(click a row to expand)</span></div>`+
+    h.map(x=>`<div class="hrow${x.id===r.id?" open":""}">
+      <div class="hsum" onclick="this.parentElement.classList.toggle('open')">
+        <span class="hcar">▸</span>
+        <span style="min-width:150px">${fmtDate(x.tested_at)}</span>
+        <span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span>
+        <span class="gr ${x.grade}" style="min-width:18px">${x.grade||'—'}</span>
+        <span style="flex:1;min-width:80px">${x.technician||'—'}</span>
+        <span style="color:var(--bad);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.faults||''}</span>
+      </div>
+      <div class="hdet">${histDetailHTML(x)}</div>
+    </div>`).join("");}
 
 // ---- bulk actions (operate on selected rows, or all filtered rows if none selected) ----
 const SEL=new Set();                                  // selected record ids
