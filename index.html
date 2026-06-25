@@ -55,6 +55,9 @@
   .rsz:hover{background:var(--orange)}
   th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
   tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
+  .prbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--navy);vertical-align:middle;padding:0}
+  .prbtn:hover{background:var(--orange);border-color:var(--orange);color:var(--navy)}
+  .prbtn svg{display:block}
   .hrow{border-top:1px solid var(--line)}
   .hsum{display:flex;align-items:center;gap:10px;padding:7px 6px;cursor:pointer;font-size:13px}
   .hsum:hover{background:#f7faff}
@@ -96,7 +99,7 @@
   .label .lm{font-size:7.5pt;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:10.5pt;font-weight:700;letter-spacing:.5pt}
   .label .lg{font-size:6.5pt;line-height:1.3;margin-top:1px}.label .lf{font-size:7pt;font-weight:800;line-height:1.3;margin-top:2px;white-space:normal}
   .label .lbc{margin-top:auto;text-align:center}.label .lbc .sn{font-family:ui-monospace,Menlo,monospace;font-size:8pt}
-  @media print{ body *{visibility:hidden} #labelArea,#labelArea *{visibility:visible} #labelArea{position:absolute;left:0;top:0}
+  @media print{ body>*{display:none!important} #labelArea{display:block!important;position:static}
     #labelArea .label{page-break-after:always;border:0} #labelArea .label:last-child{page-break-after:auto} @page{margin:1.5mm} }
   #login{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:100}
   #login .box{background:#fff;border-radius:16px;padding:30px 32px;width:330px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
@@ -246,7 +249,7 @@ function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c
 function tblWidth(){return 56+visCols().reduce((s,c)=>s+colW(c.key),0);}
 function renderHead(){const cols=visCols();
   document.getElementById("tbl").style.width=tblWidth()+"px";
-  document.getElementById("thead").innerHTML='<tr><th style="width:56px;cursor:default"><input type="checkbox" id="selAll" title="Select all"> 🖨</th>'+
+  document.getElementById("thead").innerHTML='<tr><th style="width:56px;cursor:default"><input type="checkbox" id="selAll" title="Select all / print"></th>'+
     cols.map(c=>`<th data-col="${c.key}" ${c.sk?`data-k="${c.sk}"`:""} draggable="true" style="width:${colW(c.key)}px;position:relative;cursor:pointer">${c.label}<span class="rsz" data-col="${c.key}"></span></th>`).join("")+"</tr>";
   document.querySelectorAll("#thead th[data-k]").forEach(h=>h.onclick=()=>{if(h._rsz){h._rsz=false;return;}const k=h.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
   // drag a header to MOVE the column
@@ -317,7 +320,7 @@ function render(){
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
   if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
-  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:56px;white-space:nowrap"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}><button onclick="printRow(event,'${r.id}')" title="Print label" style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:0 3px;vertical-align:middle">🖨</button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:56px;white-space:nowrap"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
   const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
   document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
   renderAnalysis(real);
