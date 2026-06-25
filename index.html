@@ -36,6 +36,12 @@
   #colMgr .ci{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:6px;cursor:grab;font-size:13px;border-top:2px solid transparent}
   #colMgr .ci:hover{background:#f4f6fa}#colMgr .ci.dragover{border-top:2px solid var(--orange)}
   #colMgr .gw{cursor:grab;color:var(--muted)}
+  #bulkBtn{background:#fff;color:var(--navy);border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
+  #bulkMenu{display:none;position:absolute;right:0;top:46px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;width:240px}
+  #bulkMenu.show{display:block}
+  #bulkMenu .bm-hd{font-size:11px;color:var(--muted);padding:6px 8px}
+  #bulkMenu .bm-i{padding:9px 10px;border-radius:7px;cursor:pointer;font-size:14px;color:var(--navy)}
+  #bulkMenu .bm-i:hover{background:#f4f6fa}
   .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block;letter-spacing:.3px}
   .pill.PASS{background:#e4f6ec;color:var(--ok)}.pill.FAIL,.pill.REJECT{background:#fae3e3;color:var(--bad)}
   .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
@@ -70,9 +76,6 @@
   .sec{font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
   .err{background:#fae3e3;color:var(--bad);padding:12px 16px;border-radius:8px;margin-bottom:14px;font-size:13px;display:none}
   footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
-  #scanWrap{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;align-items:center;justify-content:center;flex-direction:column;gap:14px}
-  #scanWrap video{max-width:90vw;max-height:70vh;border-radius:12px;border:3px solid var(--orange)}
-  #scanWrap button{background:#fff;border:0;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer}
   /* label print */
   #labelArea{position:absolute;left:-9999px;top:0}
   .label{width:384px;padding:12px 14px;font-family:-apple-system,Arial,sans-serif;color:#000;border:1px solid #000}
@@ -81,7 +84,7 @@
   .label .lm{font-size:13px;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;letter-spacing:1px}
   .label .lg{font-size:10px;line-height:1.5;margin-top:4px}
   @media print{ body *{visibility:hidden} #labelArea,#labelArea *{visibility:visible} #labelArea{position:absolute;left:0;top:0}
-    @page{size:102mm 51mm;margin:3mm} }
+    #labelArea .label{page-break-after:always;border:0} @page{size:102mm 51mm;margin:3mm} }
   #login{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:100}
   #login .box{background:#fff;border-radius:16px;padding:30px 32px;width:330px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
   #login .lg{font-size:26px;font-weight:800;color:var(--navy)}#login .lg span{color:var(--orange)}
@@ -109,9 +112,9 @@
   <button class="ghost" id="logout">Sign out</button>
 </header>
 <div class="lookup">
-  <label>🔎 Scan / serial:</label>
-  <input id="lk" placeholder="Scan the device barcode or type a serial, then Enter…" autocomplete="off">
-  <button id="scanBtn">📷 Scan with camera</button>
+  <label>🔎 Scan / search:</label>
+  <input id="q" placeholder="Scan the device serial (handheld) or type — the table auto-filters to matches" autocomplete="off">
+  <div style="position:relative"><button id="bulkBtn">☰ Bulk actions</button><div id="bulkMenu"></div></div>
 </div>
 <div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div></div>
 
@@ -120,7 +123,6 @@
   <div id="recordsTab">
     <div class="stats" id="stats"></div>
     <div class="controls">
-      <input type="search" id="q" placeholder="Filter serial, model, technician, lot, PO…">
       <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
@@ -137,7 +139,6 @@
   <div class="top"><b id="mTitle"></b><button onclick="printLabel()">🖨 Print label</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
-<div id="scanWrap"><video id="scanVid" playsinline></video><button onclick="stopScan()">Cancel</button><div style="color:#fff;font-size:13px">Point the camera at the device barcode / QR</div></div>
 <div id="labelArea"></div>
 
 <script>
@@ -204,7 +205,7 @@ const ALLCOLS=[
   {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
   {key:"chip",label:"CPU / Chip",sk:"chip",html:r=>`<td class="muted">${r.chip||"—"}</td>`},
   {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${r.cpu_speed||"—"}</td>`},
-  {key:"cores",label:"Cores C/G",html:r=>`<td class="muted">${[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / ")||"—"}</td>`},
+  {key:"cores",label:"CPU/GPU cores",html:r=>`<td class="muted">${(r.cpu_cores||r.gpu_cores)?((r.cpu_cores?r.cpu_cores+"C":"")+(r.gpu_cores?r.gpu_cores+"G":"")):"—"}</td>`},
   {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
   {key:"technician",label:"Technician",sk:"technician",html:r=>`<td>${r.technician||"—"}</td>`},
   {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
@@ -220,8 +221,9 @@ function loadCols(){try{const s=JSON.parse(localStorage.getItem("qcCols")||"null
 function saveCols(){localStorage.setItem("qcCols",JSON.stringify({order:ORDER,visible:VIS}));}
 function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
 function renderHead(){const cols=visCols();
-  document.getElementById("thead").innerHTML="<tr>"+cols.map(c=>`<th ${c.sk?`data-k="${c.sk}"`:""}>${c.label}</th>`).join("")+"</tr>";
-  document.querySelectorAll("#thead th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});}
+  document.getElementById("thead").innerHTML='<tr><th style="width:26px;cursor:default"><input type="checkbox" id="selAll"></th>'+cols.map(c=>`<th ${c.sk?`data-k="${c.sk}"`:""}>${c.label}</th>`).join("")+"</tr>";
+  document.querySelectorAll("#thead th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+  const sa=document.getElementById("selAll");sa.onclick=e=>{e.stopPropagation();if(sa.checked)ROWS.forEach(r=>SEL.add(r.id));else SEL.clear();render();};}
 let dragK=null;
 function renderColMgr(){const m=document.getElementById("colMgr");
   m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=ALLCOLS.find(x=>x.key===k);
@@ -268,8 +270,9 @@ function render(){
   document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate"],[fail,"fail / reject"],[last7,"in last 7 days"]]
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
-  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length||1}" class="empty">No records match.</td></tr>`;
-  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})">`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
+  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:26px"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
   document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
   renderAnalysis(real);
 }
@@ -330,31 +333,9 @@ function openModal(i){const r=ROWS[i];CURRENT=r;
 function closeModal(){document.getElementById("modal").classList.remove("show");}
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
 
-// ---- serial / barcode lookup ------------------------------------------------
-function lookupSerial(s){s=(s||"").trim();if(!s)return;
-  // a scanner may append junk; match the longest record whose serial is contained
-  const hit=RAW.find(r=>r.serial && (r.serial.toUpperCase()===s.toUpperCase()))||
-            RAW.find(r=>r.serial && s.toUpperCase().includes(r.serial.toUpperCase()));
-  if(!hit){alert("No QC record found for: "+s);return;}
-  // newest record for that serial
-  const all=RAW.filter(r=>r.serial===hit.serial).sort((a,b)=>(b.tested_at>a.tested_at?1:-1));
-  ROWS=all;openModal(0);}
-document.getElementById("lk").addEventListener("keydown",e=>{if(e.key==="Enter"){lookupSerial(e.target.value);e.target.select();}});
-
-// camera scan (Safari 17+/Chrome via the native BarcodeDetector — no library)
-let scanStream=null,scanTimer=null;
-async function startScan(){
-  if(!('BarcodeDetector'in window)){alert("Camera scanning needs Safari 17+ or Chrome. A handheld scanner works into the box above, or type the serial.");return;}
-  try{scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});}
-  catch(e){alert("Camera unavailable: "+e.message);return;}
-  const v=document.getElementById("scanVid");v.srcObject=scanStream;await v.play();
-  document.getElementById("scanWrap").style.display="flex";
-  const det=new BarcodeDetector({formats:["qr_code","code_128","code_39","ean_13","data_matrix"]});
-  scanTimer=setInterval(async()=>{try{const codes=await det.detect(v);
-    if(codes.length){const s=codes[0].rawValue;stopScan();document.getElementById("lk").value=s;lookupSerial(s);}}catch(e){}},400);}
-function stopScan(){if(scanTimer)clearInterval(scanTimer);if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
-  scanStream=null;document.getElementById("scanWrap").style.display="none";}
-document.getElementById("scanBtn").onclick=startScan;
+// ---- scan / search: the box auto-filters live (wired below). A handheld scanner just
+// types the serial in → the table narrows to matches. If it narrows to ONE unit, Enter opens it.
+document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&ROWS.length===1)openModal(0);});
 
 // ---- label reprint (Code 128 barcode, native window.print) ------------------
 const C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
@@ -364,8 +345,7 @@ function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"
   let mods="";vals.forEach(v=>mods+=C128[v]);
   let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
   return `<svg width="${x}" height="${h}" viewBox="0 0 ${x} ${h}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%">${rects}</svg>`;}
-function printLabel(){const r=CURRENT;if(!r)return;
-  document.getElementById("labelArea").innerHTML=`<div class="label">
+function labelHTML(r){return `<div class="label">
     <div class="lh"><span class="res">${r.result==="PASS"?"✓ PASS":r.result}</span><span class="gr">Grade ${r.grade||"—"}</span></div>
     <div class="lm">${r.model||""} ${r.year||""}</div>
     <div class="ls">${r.serial||""}</div>
@@ -373,8 +353,25 @@ function printLabel(){const r=CURRENT;if(!r)return;
       ${[r.sku&&("SKU "+r.sku),(r.batt_h!=null?"Batt "+Math.min(100,r.batt_h)+"%":""),"Tech: "+(r.technician||"—"),fmtDate(r.tested_at)].filter(Boolean).join(" · ")}</div>
     <div style="margin-top:6px">${code128svg(r.serial,1.4,42)}</div>
     <div style="font-family:ui-monospace,monospace;font-size:10px;text-align:center">${r.serial||""}</div>
-  </div>`;
+  </div>`;}
+function printLabels(rows){if(!rows||!rows.length)return;
+  document.getElementById("labelArea").innerHTML=rows.map(labelHTML).join("");
   setTimeout(()=>window.print(),60);}
+function printLabel(){if(CURRENT)printLabels([CURRENT]);}
+
+// ---- bulk actions (operate on selected rows, or all filtered rows if none selected) ----
+const SEL=new Set();                                  // selected record ids
+function selRows(){const s=ROWS.filter(r=>SEL.has(r.id));return s.length?s:ROWS;}
+function toggleSel(id,on){on?SEL.add(id):SEL.delete(id);}
+function bulkLabels(){const rows=selRows();if(rows.length>60&&!confirm(`Print ${rows.length} labels?`))return;printLabels(rows);}
+function bulkExport(){const rows=selRows();const keep=ROWS;ROWS=rows;csv();ROWS=keep;}
+function renderBulkMenu(){const n=SEL.size,t=n||ROWS.length,lbl=n?`${n} selected`:`all ${ROWS.length} shown`;
+  document.getElementById("bulkMenu").innerHTML=
+    `<div class="bm-hd">Acts on ${lbl}</div>
+     <div class="bm-i" onclick="bulkLabels();closeBulk()">🖨 Print labels (${t})</div>
+     <div class="bm-i" onclick="bulkExport();closeBulk()">⤓ Export to Excel (${t})</div>
+     ${n?`<div class="bm-i" onclick="SEL.clear();render();renderBulkMenu()">✕ Clear selection</div>`:""}`;}
+function closeBulk(){document.getElementById("bulkMenu").classList.remove("show");}
 
 function csv(){
   // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
@@ -416,7 +413,10 @@ async function doLogin(){const u=document.getElementById("luser").value,p=docume
   else e.textContent=(j&&j.reason)||"Sign-in failed.";}
 function enter(){document.getElementById("login").style.display="none";
   document.getElementById("who").textContent="Signed in: "+(sessionStorage.getItem("qcUser")||"");load();
-  document.getElementById("lk").focus();}
+  document.getElementById("q").focus();}            // focus the scan/search box for the handheld scanner
+document.getElementById("bulkBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("bulkMenu");
+  const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderBulkMenu();};
+document.addEventListener("click",e=>{if(!e.target.closest("#bulkMenu")&&e.target.id!=="bulkBtn")closeBulk();});
 function requireLogin(){if(sessionStorage.getItem("qcUser"))enter();
   else{fillLoginUsers();document.getElementById("login").style.display="flex";}}
 document.getElementById("lbtn").onclick=doLogin;
