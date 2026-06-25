@@ -47,7 +47,12 @@
   .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
   .gr{font-weight:800}.gr.A{color:#1e9e57}.gr.B{color:#3b82c4}.gr.C{color:#c8881b}.gr.D{color:#cf3b3b}
   table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #tbl{table-layout:fixed}
+  #recordsTab{overflow-x:auto}
+  #thead th{user-select:none}
+  .rsz{position:absolute;right:0;top:0;width:7px;height:100%;cursor:col-resize;z-index:2}
+  .rsz:hover{background:var(--orange)}
   th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
   tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
   td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;color:var(--bad);font-size:12px}
@@ -220,14 +225,33 @@ const ALLCOLS=[
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
 const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","faults"];
-let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice();
-function loadCols(){try{const s=JSON.parse(localStorage.getItem("qcCols")||"null");
-  if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));}}catch(e){}}
-function saveCols(){localStorage.setItem("qcCols",JSON.stringify({order:ORDER,visible:VIS}));}
+let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
+const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,department:85,lot_id:65,po:65,supplier:95,faults:240};
+const colW=k=>WIDTHS[k]||DEFAULT_W[k]||110;
+const colKey=()=>"qcCols:"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN
+function loadCols(){ORDER=ALLCOLS.map(c=>c.key);VIS=DEFAULT_VIS.slice();WIDTHS={};
+  try{const s=JSON.parse(localStorage.getItem(colKey())||"null");
+    if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
+      VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
+function saveCols(){localStorage.setItem(colKey(),JSON.stringify({order:ORDER,visible:VIS,widths:WIDTHS}));}
 function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
+function tblWidth(){return 26+visCols().reduce((s,c)=>s+colW(c.key),0);}
 function renderHead(){const cols=visCols();
-  document.getElementById("thead").innerHTML='<tr><th style="width:26px;cursor:default"><input type="checkbox" id="selAll"></th>'+cols.map(c=>`<th ${c.sk?`data-k="${c.sk}"`:""}>${c.label}</th>`).join("")+"</tr>";
-  document.querySelectorAll("#thead th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+  document.getElementById("tbl").style.width=tblWidth()+"px";
+  document.getElementById("thead").innerHTML='<tr><th style="width:26px;cursor:default"><input type="checkbox" id="selAll"></th>'+
+    cols.map(c=>`<th data-col="${c.key}" ${c.sk?`data-k="${c.sk}"`:""} draggable="true" style="width:${colW(c.key)}px;position:relative;cursor:pointer">${c.label}<span class="rsz" data-col="${c.key}"></span></th>`).join("")+"</tr>";
+  document.querySelectorAll("#thead th[data-k]").forEach(h=>h.onclick=()=>{if(h._rsz){h._rsz=false;return;}const k=h.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+  // drag a header to MOVE the column
+  document.querySelectorAll("#thead th[data-col]").forEach(h=>{const k=h.dataset.col;
+    h.ondragstart=e=>{if(e.target.classList.contains("rsz")){e.preventDefault();return;}dragK=k;};
+    h.ondragover=e=>e.preventDefault();
+    h.ondrop=e=>{e.preventDefault();if(!dragK||dragK===k)return;const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderHead();render();};});
+  // drag the right edge to RESIZE the column
+  document.querySelectorAll("#thead .rsz").forEach(rz=>rz.onmousedown=e=>{e.preventDefault();e.stopPropagation();
+    const k=rz.dataset.col,th=rz.parentElement,sx=e.clientX,sw=th.offsetWidth;
+    const mv=ev=>{WIDTHS[k]=Math.max(40,sw+(ev.clientX-sx));th.style.width=WIDTHS[k]+"px";document.getElementById("tbl").style.width=tblWidth()+"px";};
+    const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);th._rsz=true;saveCols();};
+    document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);});
   const sa=document.getElementById("selAll");sa.onclick=e=>{e.stopPropagation();if(sa.checked)ROWS.forEach(r=>SEL.add(r.id));else SEL.clear();render();};}
 let dragK=null;
 function renderColMgr(){const m=document.getElementById("colMgr");
@@ -453,7 +477,8 @@ async function doLogin(){const u=document.getElementById("luser").value,p=docume
   if(j&&j.ok){sessionStorage.setItem("qcUser",j.display_name||u);enter();}
   else e.textContent=(j&&j.reason)||"Sign-in failed.";}
 function enter(){document.getElementById("login").style.display="none";
-  document.getElementById("who").textContent="Signed in: "+(sessionStorage.getItem("qcUser")||"");load();
+  document.getElementById("who").textContent="Signed in: "+(sessionStorage.getItem("qcUser")||"");
+  loadCols();renderHead();load();                   // per-login column layout
   document.getElementById("q").focus();}            // focus the scan/search box for the handheld scanner
 document.getElementById("bulkBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("bulkMenu");
   const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderBulkMenu();};
