@@ -78,13 +78,14 @@
   footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   /* label print */
   #labelArea{position:absolute;left:-9999px;top:0}
-  .label{width:384px;padding:12px 14px;font-family:-apple-system,Arial,sans-serif;color:#000;border:1px solid #000}
-  .label .lh{display:flex;align-items:center;gap:8px;border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px}
-  .label .lh .res{font-size:20px;font-weight:900}.label .lh .gr{font-size:14px;font-weight:800;border:2px solid #000;border-radius:6px;padding:1px 7px}
-  .label .lm{font-size:13px;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;letter-spacing:1px}
-  .label .lg{font-size:10px;line-height:1.5;margin-top:4px}
+  .label{width:88mm;padding:1.5mm 2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+  .label .lh{display:flex;align-items:center;gap:6px;border-bottom:1.5px solid #000;padding-bottom:2px;margin-bottom:2px}
+  .label .lh .res{font-size:12pt;font-weight:900}.label .lh .gr{font-size:8.5pt;font-weight:800;border:1.5px solid #000;border-radius:4px;padding:0 5px;margin-left:auto}
+  .label .lm{font-size:7.5pt;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:10.5pt;font-weight:700;letter-spacing:.5pt}
+  .label .lg{font-size:6pt;line-height:1.3;margin-top:1px}.label .lf{font-size:6.5pt;font-weight:800;line-height:1.25;margin-top:1px}
+  .label .lbc{margin-top:auto;text-align:center}.label .lbc .sn{font-family:ui-monospace,Menlo,monospace;font-size:8pt}
   @media print{ body *{visibility:hidden} #labelArea,#labelArea *{visibility:visible} #labelArea{position:absolute;left:0;top:0}
-    #labelArea .label{page-break-after:always;border:0} @page{size:102mm 51mm;margin:3mm} }
+    #labelArea .label{page-break-after:always;border:0} @page{margin:1.5mm} }
   #login{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:100}
   #login .box{background:#fff;border-radius:16px;padding:30px 32px;width:330px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
   #login .lg{font-size:26px;font-weight:800;color:var(--navy)}#login .lg span{color:var(--orange)}
@@ -94,6 +95,7 @@
   #login .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
   #who{color:#cdd8ea;font-size:13px}
 </style>
+<style id="pageStyle"></style>
 </head>
 <body>
 <div id="login"><div class="box">
@@ -137,7 +139,9 @@
 </div>
 
 <div class="modal" id="modal"><div class="card">
-  <div class="top"><b id="mTitle"></b><button onclick="printLabel()">🖨 Print label</button><span class="x" onclick="closeModal()">×</span></div>
+  <div class="top"><b id="mTitle"></b>
+    <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
+    <button onclick="printLabel()">🖨 Print label</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -335,7 +339,9 @@ function openModal(i){const r=ROWS[i];CURRENT=r;
       ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
     <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
     ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
-    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}`;
+    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
+    ${historyHTML(r)}`;
+  fillLabelSizes();
   document.getElementById("modal").classList.add("show");}
 function closeModal(){document.getElementById("modal").classList.remove("show");}
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
@@ -356,15 +362,43 @@ function labelHTML(r){return `<div class="label">
     <div class="lh"><span class="res">${r.result==="PASS"?"✓ PASS":r.result}</span><span class="gr">Grade ${r.grade||"—"}</span></div>
     <div class="lm">${r.model||""} ${r.year||""}</div>
     <div class="ls">${r.serial||""}</div>
-    <div class="lg">${[r.chip,(r.memory?r.memory+"GB RAM":""),(r.storage?r.storage+"GB":""),r.colour].filter(Boolean).join(" · ")}<br>
-      ${[r.sku&&("SKU "+r.sku),(r.batt_h!=null?"Batt "+Math.min(100,r.batt_h)+"%":""),"Tech: "+(r.technician||"—"),fmtDate(r.tested_at)].filter(Boolean).join(" · ")}</div>
-    <div style="margin-top:6px">${code128svg(r.serial,1.4,42)}</div>
-    <div style="font-family:ui-monospace,monospace;font-size:10px;text-align:center">${r.serial||""}</div>
+    <div class="lg">${[r.chip,(r.memory?r.memory+"GB RAM":""),(r.storage?r.storage+"GB":""),r.colour,r.sku&&("SKU "+r.sku),(r.batt_h!=null?"Batt "+Math.min(100,r.batt_h)+"%":""),"Tech "+(r.technician||"—"),fmtDate(r.tested_at)].filter(Boolean).join(" · ")}</div>
+    ${r.faults?`<div class="lf">⚠ Faults: ${r.faults}</div>`:""}
+    <div class="lbc">${code128svg(r.serial,1.2,30)}<div class="sn">${r.serial||""}</div></div>
   </div>`;}
-function printLabels(rows){if(!rows||!rows.length)return;
+// DyMo + standard label presets. Each prints ONE label per unit (was spilling across many
+// because the page size didn't match the loaded label). Pick the label you've loaded.
+const LABEL_SIZES=[
+  {id:"dymo99012",n:"DyMo 99012 / 30323 — 89×36mm",w:89,h:36},
+  {id:"dymo11356",n:"DyMo 11356 — 89×41mm",w:89,h:41},
+  {id:"dymo30252",n:"DyMo 30252 Address — 89×28mm",w:89,h:28},
+  {id:"dymo30334",n:"DyMo 30334 — 57×32mm",w:57,h:32},
+  {id:"dymoship",n:"DyMo Shipping 99014 — 54×101mm",w:54,h:101},
+  {id:"std4x2",n:"Standard 4×2 inch — 102×51mm",w:102,h:51},
+];
+function curLabelSize(){const id=localStorage.getItem("qcLabelSize")||"dymo99012";return LABEL_SIZES.find(s=>s.id===id)||LABEL_SIZES[0];}
+function fillLabelSizes(){const sel=document.getElementById("labelSize");if(!sel)return;
+  sel.innerHTML=LABEL_SIZES.map(s=>`<option value="${s.id}">${s.n}</option>`).join("");sel.value=curLabelSize().id;}
+function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize();
+  document.getElementById("pageStyle").textContent=`@page{size:${sz.w}mm ${sz.h}mm;margin:1.5mm} #labelArea .label{width:${sz.w-3}mm;height:${sz.h-3}mm}`;
   document.getElementById("labelArea").innerHTML=rows.map(labelHTML).join("");
-  setTimeout(()=>window.print(),60);}
+  setTimeout(()=>window.print(),80);}
 function printLabel(){if(CURRENT)printLabels([CURRENT]);}
+// Full QC history for one unit (all prior tests on the same serial).
+function historyHTML(r){
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(b.tested_at||"")>(a.tested_at||"")?1:-1);
+  if(h.length<=1)return `<div class="sec">History</div><div class="muted" style="font-size:13px">Only this one QC test is on record for this serial.</div>`;
+  return `<div class="sec">History — ${h.length} tests on this unit</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="color:var(--muted);text-align:left"><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Result</th><th style="padding:4px 6px">Grade</th><th style="padding:4px 6px">Tech</th><th style="padding:4px 6px">Faults</th></tr>
+      ${h.map(x=>`<tr style="border-top:1px solid var(--line)">
+        <td style="padding:4px 6px">${fmtDate(x.tested_at)}</td>
+        <td style="padding:4px 6px"><span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span></td>
+        <td style="padding:4px 6px" class="gr ${x.grade}">${x.grade||'—'}</td>
+        <td style="padding:4px 6px">${x.technician||'—'}</td>
+        <td style="padding:4px 6px;color:var(--bad)">${x.faults||''}</td></tr>`).join("")}
+    </table>`;}
 
 // ---- bulk actions (operate on selected rows, or all filtered rows if none selected) ----
 const SEL=new Set();                                  // selected record ids
