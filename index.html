@@ -98,7 +98,7 @@
   <div class="logo">yes<span>again</span></div><h1>Quality-Control Records</h1>
   <div class="sp"></div>
   <span id="who"></span>
-  <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ CSV</button>
+  <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ Export to Excel (full)</button>
   <button class="ghost" id="logout">Sign out</button>
 </header>
 <div class="lookup">
@@ -314,10 +314,22 @@ function printLabel(){const r=CURRENT;if(!r)return;
   </div>`;
   setTimeout(()=>window.print(),60);}
 
-function csv(){const cols=["tested_at","serial","model","year","chip","memory","storage","technician","department","grade","display_grade","body_grade","result","batt_h","batt_c","batt_cond","colour","sku","lot_id","po","supplier","wifi","faults","notes"];
+function csv(){
+  // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
+  // LCD/body grade, CPU+speed, and Apple-Silicon CPU/GPU core counts.
+  const COLS=[["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
+    ["chip","CPU / Chip"],["cpu_speed","CPU speed"],["cpu_cores","CPU cores"],["gpu_cores","GPU cores"],
+    ["memory","RAM (GB)"],["storage","SSD (GB)"],["colour","Colour"],["sku","YesAgain SKU"],["part_number","Part number"],
+    ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
+    ["batt_h","Battery health %"],["batt_c","Battery cycles"],["batt_cond","Battery condition"],
+    ["kbd_layout","Keyboard layout"],["kbd_language","Keyboard language"],["wifi","Wi-Fi SSID"],
+    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["department","Department"],
+    ["lot_id","Lot"],["po","PO"],["supplier","Supplier"],["faults","Faults"],["notes","Notes"]];
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  const lines=[cols.join(",")].concat(ROWS.map(r=>cols.map(c=>esc(c==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[c])).join(",")));
-  const blob=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");
+  const val=(k,r)=>k==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[k];
+  const lines=[COLS.map(c=>esc(c[1])).join(",")].concat(ROWS.map(r=>COLS.map(c=>esc(val(c[0],r))).join(",")));
+  // UTF-8 BOM + CRLF so Excel opens it cleanly (incl. Arabic notes)
+  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download=`YesAgain QC Records ${new Date().toISOString().slice(0,10)}.csv`;a.click();}
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));t.classList.add("on");
