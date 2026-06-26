@@ -549,7 +549,7 @@ function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"
   let sum=104;for(let i=1;i<vals.length;i++)sum+=vals[i]*i;vals.push(sum%103);vals.push(106);
   let mods="";vals.forEach(v=>mods+=C128[v]);
   let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
-  return `<svg width="${x}" height="${h}" viewBox="0 0 ${x} ${h}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%">${rects}</svg>`;}
+  return `<svg viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${h}px;display:block">${rects}</svg>`;}
 function labelHTML(r){return `<div class="label">
     <div class="lh"><span class="res">${r.result==="PASS"?"✓ PASS":(r.result||"—")}</span><span class="gr">Grade ${r.grade||"—"}</span></div>
     <div class="ls">${r.serial||""}</div>
@@ -557,7 +557,7 @@ function labelHTML(r){return `<div class="label">
     <div class="lg">${[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":""),r.colour].filter(Boolean).join(" · ")}</div>
     <div class="lg">SKU ${r.sku||"—"} &nbsp;·&nbsp; Batt ${r.batt_h!=null?Math.min(100,r.batt_h)+"%":"—"} &nbsp;·&nbsp; ${r.technician||"—"} &nbsp;·&nbsp; ${fmtDate(r.tested_at)}</div>
     <div class="lfwrap">${r.faults?`<div class="lf">⚠ ${r.faults}</div>`:""}</div>
-    <div class="lbc">${code128svg(r.serial,1.0,26)}<div class="sn">${r.serial||""}</div></div>
+    <div class="lbc">${code128svg(r.serial,1.0,34)}<div class="sn">${r.serial||""}</div></div>
   </div>`;}
 // DyMo + standard label presets. Each prints ONE label per unit (was spilling across many
 // because the page size didn't match the loaded label). Pick the label you've loaded.
@@ -584,7 +584,7 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
     .label .lm{font-size:7.5pt;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:10.5pt;font-weight:700;letter-spacing:.5pt}
     .label .lg{font-size:6.5pt;line-height:1.3;margin-top:1px}
     .label .lfwrap{flex:1 1 auto;min-height:0;overflow:hidden;margin-top:2px}.label .lf{font-size:7pt;font-weight:800;line-height:1.25}
-    .label .lbc{flex:0 0 auto;text-align:center;margin-top:2px}.label .lbc svg{max-width:100%;height:auto}.label .lbc .sn{font-family:ui-monospace,monospace;font-size:8pt}`;
+    .label .lbc{flex:0 0 auto;text-align:center;margin-top:2px}.label .lbc svg{width:100%;height:auto}.label .lbc .sn{font-family:ui-monospace,monospace;font-size:8pt}`;
   let f=document.getElementById("printFrame");if(f)f.remove();
   f=document.createElement("iframe");f.id="printFrame";f.setAttribute("aria-hidden","true");
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
