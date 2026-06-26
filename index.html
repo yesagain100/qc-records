@@ -559,9 +559,12 @@ function chipAbbrev(chip){chip=String(chip||"");
   return (chip.split(/\s+/).pop()||chip).slice(0,8);}
 // CPU clock (GHz number only) from the speed field, else the chip string ("…@ 1.60GHz"),
 // else the SKU ("…-1.6-…"). Always shown next to the CPU model.
+function fmtGhz(x){const n=parseFloat(x);if(isNaN(n))return "";return n%1===0?n.toFixed(1):String(n);}  // 2→"2.0", 1.60→"1.6"
 function cpuSpeed(r){
-  for(const src of [r.cpu_speed, r.chip]){const m=String(src||"").match(/(\d+\.\d+)/);if(m)return String(parseFloat(m[1]));}
-  const sm=String(r.sku||"").match(/-(\d\.\d+)-/);return sm?String(parseFloat(sm[1])):"";}
+  for(const src of [r.cpu_speed, r.chip]){const m=String(src||"").match(/(\d+\.\d+)/);if(m)return fmtGhz(m[1]);}
+  // SKU clock — decimal ("-1.6-") or the integer segment right after the CPU token ("-I5-2-")
+  const sm=String(r.sku||"").match(/-i[3579]-(\d+(?:\.\d+)?)-/i)||String(r.sku||"").match(/-(\d\.\d+)-/);
+  return sm?fmtGhz(sm[1]):"";}
 // One CPU box. Apple Silicon → "M1P 10C16G 3.2" (chip + CPU/GPU cores + clock); Intel → "i5 1.6".
 function cpuBox(r){const cc=parseInt(r.cpu_cores)||0,gc=parseInt(r.gpu_cores)||0,ab=chipAbbrev(r.chip),sp=cpuSpeed(r);
   if(gc>0)return `${ab} ${cc||"?"}C${gc}G${sp?" "+sp:""}`;
@@ -616,7 +619,7 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
     .lright{flex:1.05;border-left:1.4pt solid #000;padding-left:1.9mm;display:flex;flex-direction:column;overflow:hidden}
     .lsku{font-family:ui-monospace,Menlo,monospace;font-size:7pt;font-weight:700;line-height:1.15;word-break:break-all}
     .lsku b{font-family:-apple-system,Arial,sans-serif;font-size:5pt;color:#555;font-weight:800;letter-spacing:.3pt;margin-right:1pt}
-    .lser{font-family:ui-monospace,Menlo,monospace;font-size:11pt;font-weight:700;letter-spacing:.3pt;margin-top:.3mm}
+    .lser{font-family:ui-monospace,Menlo,monospace;font-size:9.5pt;font-weight:700;letter-spacing:.3pt;margin-top:.3mm}
     .lmod{font-size:7pt;font-weight:700;margin-top:.3mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .lchips{display:grid;grid-template-columns:repeat(3,1fr);gap:.9mm;margin-top:.9mm}
     .lchip{border:1pt solid #000;border-radius:1mm;padding:.4mm 0;text-align:center;overflow:hidden}
