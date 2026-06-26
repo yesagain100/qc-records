@@ -557,11 +557,15 @@ function chipAbbrev(chip){chip=String(chip||"");
   if(m){const t={pro:"P",max:"M",ultra:"U"}[(m[2]||"").toLowerCase()]||"";return "M"+m[1]+t;}
   let i=chip.match(/i([3579])/i);if(i)return "i"+i[1];
   return (chip.split(/\s+/).pop()||chip).slice(0,8);}
-// One CPU box. Apple Silicon (has GPU cores) → "M3P 11C14G"; Intel → chip + clock e.g. "i5 1.6GHz".
-function cpuBox(r){const cc=parseInt(r.cpu_cores)||0,gc=parseInt(r.gpu_cores)||0,ab=chipAbbrev(r.chip);
-  if(gc>0)return `${ab} ${cc||"?"}C${gc}G`;
-  const sp=String(r.cpu_speed||"").replace(/\s*ghz/i,"").trim();
-  return sp?`${ab} ${sp}GHz`:(ab||"—");}
+// CPU clock (GHz number only) from the speed field, else the chip string ("…@ 1.60GHz"),
+// else the SKU ("…-1.6-…"). Always shown next to the CPU model.
+function cpuSpeed(r){
+  for(const src of [r.cpu_speed, r.chip]){const m=String(src||"").match(/(\d+\.\d+)/);if(m)return String(parseFloat(m[1]));}
+  const sm=String(r.sku||"").match(/-(\d\.\d+)-/);return sm?String(parseFloat(sm[1])):"";}
+// One CPU box. Apple Silicon → "M1P 10C16G 3.2" (chip + CPU/GPU cores + clock); Intel → "i5 1.6".
+function cpuBox(r){const cc=parseInt(r.cpu_cores)||0,gc=parseInt(r.gpu_cores)||0,ab=chipAbbrev(r.chip),sp=cpuSpeed(r);
+  if(gc>0)return `${ab} ${cc||"?"}C${gc}G${sp?" "+sp:""}`;
+  return `${ab}${sp?" "+sp:""}`||"—";}
 function colourShort(c){return (String(c||"").replace(/^space\s+/i,"Sp.").trim())||"—";}
 function labelHTML(r){
   const chips=[["CPU",cpuBox(r)],["RAM",r.memory?r.memory+"GB":"—"],["SSD",r.storage?r.storage+"GB":"—"],
