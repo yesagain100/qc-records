@@ -639,7 +639,14 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
   document.body.appendChild(f);
   const doc=f.contentWindow.document;
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.map(labelHTML).join("")}</body></html>`);doc.close();
-  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},300);}
+  setTimeout(()=>{try{
+    // Auto-shrink any spec-box value that's too wide (e.g. "M1M 10C24G 3.2") so it fits the box.
+    const idoc=f.contentWindow.document, iwin=f.contentWindow;
+    idoc.querySelectorAll(".lchip").forEach(box=>{const el=box.querySelector(".cv");if(!el)return;
+      const max=box.clientWidth-2;let fs=parseFloat(iwin.getComputedStyle(el).fontSize)||7,g=0;
+      while(el.scrollWidth>max&&fs>3.5&&g++<40){fs-=0.3;el.style.fontSize=fs+"px";}});
+    iwin.focus();iwin.print();
+  }catch(e){alert("Print failed: "+e.message);}},300);}
 function printLabel(){if(CURRENT)printLabels([CURRENT]);}
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
 // Full QC history for one unit (all prior tests on the same serial).
