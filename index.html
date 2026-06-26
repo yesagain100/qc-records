@@ -549,7 +549,7 @@ function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"
   let sum=104;for(let i=1;i<vals.length;i++)sum+=vals[i]*i;vals.push(sum%103);vals.push(106);
   let mods="";vals.forEach(v=>mods+=C128[v]);
   let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
-  return `<svg viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${h}px;display:block">${rects}</svg>`;}
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block">${rects}</svg>`;}
 function lblEsc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 // Short chip token: Apple "M3 Pro"→"M3P", "M1 Max"→"M1M", "M2 Ultra"→"M2U", "M3"→"M3"; Intel "Core i5"→"i5".
 function chipAbbrev(chip){chip=String(chip||"");
@@ -626,7 +626,7 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
     .lfl{font-size:6.2pt;font-weight:700;line-height:1.25;margin-top:.3mm}
     .lnf{font-size:6pt;color:#444;margin-top:2mm}
     .lbc{flex:0 0 auto;text-align:center;margin-top:1mm}
-    .lbc svg{width:100%;height:8.5mm;display:block}
+    .lbc svg{width:100%!important;height:13mm;display:block}
     .lbc .sn{font-family:ui-monospace,monospace;font-size:6pt;letter-spacing:.5pt}`;
   let f=document.getElementById("printFrame");if(f)f.remove();
   f=document.createElement("iframe");f.id="printFrame";f.setAttribute("aria-hidden","true");
