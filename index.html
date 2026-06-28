@@ -178,7 +178,7 @@
       <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
-      <select id="fWh"><option value="">All warehouses</option></select>
+      <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
@@ -247,6 +247,14 @@ const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,
 // Region-based tested time: show each unit in ITS OWN local time. The app stamps a
 // station-local string (tested_local); if absent (older records), convert the UTC
 // tested_at into the record's saved timezone, else the viewer's local time.
+// Bucket a record into one of the 3 operating regions by its warehouse / timezone.
+function regionGroup(r){
+  const w=(r&&r.warehouse||"").toLowerCase(), tz=(r&&r.timezone||"").toLowerCase();
+  if(/uae|dubai|abu ?dhabi|sharjah|ajman|muscat|emirat/.test(w)||/dubai|muscat|abu_dhabi/.test(tz)) return "UAE";
+  if(/france|paris|fr\b/.test(w)||/paris/.test(tz)) return "France";
+  if(/\buk\b|united kingdom|london|britain|england|scotland|wales/.test(w)||/london/.test(tz)) return "UK";
+  return w||tz?"Other":"";
+}
 function fmtTested(r){
   const s=(r&&r.snapshot)||{};                       // works for flattened rows AND raw records
   const tl=(r&&r.tested_local)||s.tested_local; if(tl) return tl;
@@ -339,8 +347,12 @@ async function load(){
 }
 function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.technician).filter(Boolean))].sort();
   document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
-  const whs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.warehouse).filter(Boolean))].sort();
-  document.getElementById("fWh").innerHTML='<option value="">All warehouses</option>'+whs.map(t=>`<option>${t}</option>`).join("");}
+  // Fixed region groups (UAE/France/UK) + "Other" only if some record doesn't map to one.
+  const groups=new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>regionGroup(r)).filter(Boolean));
+  const sel=document.getElementById("fWh"),keep=sel.value;
+  let opts='<option value="">All regions</option>'+["UAE","France","UK"].map(g=>`<option>${g}</option>`).join("");
+  if(groups.has("Other"))opts+='<option>Other</option>';
+  sel.innerHTML=opts; sel.value=keep;}
 function current(){
   const q=document.getElementById("q").value.toLowerCase().trim();
   const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
@@ -350,7 +362,7 @@ function current(){
   let rows=RAW.filter(r=>{
     if(hide&&isTest(r._raw))return false;
     if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
-    if(fw&&r.warehouse!==fw)return false;
+    if(fw&&regionGroup(r)!==fw)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
     if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
