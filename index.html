@@ -178,6 +178,7 @@
       <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
+      <select id="fWh"><option value="">All warehouses</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
@@ -231,7 +232,8 @@ function flat(r){const s=r.snapshot||{};
   )].join("; ");
   return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
-    technician:r.technician||s.technician||"",department:s.department||"",
+    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",department:s.department||"",
+    warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
     grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
     result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
     batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
@@ -242,12 +244,25 @@ function flat(r){const s=r.snapshot||{};
     kbd_layout:s.kbd_layout||"",kbd_language:s.kbd_language||"",photos:s.photo_count||0,
     perf_score:r.perf_score||s.perf_score||"",notes:r.notes||s.notes||"",faults,_raw:r};}
 const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"})+" "+x.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});}catch(e){return d||"—";}};
+// Region-based tested time: show each unit in ITS OWN local time. The app stamps a
+// station-local string (tested_local); if absent (older records), convert the UTC
+// tested_at into the record's saved timezone, else the viewer's local time.
+function fmtTested(r){
+  const s=(r&&r.snapshot)||{};                       // works for flattened rows AND raw records
+  const tl=(r&&r.tested_local)||s.tested_local; if(tl) return tl;
+  const tz=(r&&r.timezone)||s.timezone;
+  const d=(r&&r.tested_at)||r;
+  try{const x=new Date(d);const o={day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"};
+    if(tz){try{o.timeZone=tz;}catch(e){}}
+    return x.toLocaleString(undefined,o).replace(",","");}catch(e){return fmtDate(d);}
+}
 const battTxt=r=>r.batt_h!=null?`${Math.min(100,r.batt_h)}% · ${r.batt_c??"?"} cyc`:"—";
 const specLine=r=>[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":""),r.year].filter(Boolean).join(" · ");
 
 // ---- customizable table columns (show/hide + drag to reorder) ---------------
 const ALLCOLS=[
-  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtDate(r.tested_at)}</td>`},
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
   {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
   {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
   {key:"year",label:"Year",sk:"year",html:r=>`<td class="muted">${r.year||""}</td>`},
@@ -271,9 +286,9 @@ const ALLCOLS=[
   {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
-const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","faults"];
+const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","faults"];
 let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
-const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,department:85,lot_id:65,po:65,supplier:95,faults:240};
+const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
 const colW=k=>WIDTHS[k]||DEFAULT_W[k]||110;
 const colKey=()=>"qcCols:"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN
 function loadCols(){ORDER=ALLCOLS.map(c=>c.key);VIS=DEFAULT_VIS.slice();WIDTHS={};
@@ -323,15 +338,19 @@ async function load(){
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
 }
 function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.technician).filter(Boolean))].sort();
-  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");}
+  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
+  const whs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.warehouse).filter(Boolean))].sort();
+  document.getElementById("fWh").innerHTML='<option value="">All warehouses</option>'+whs.map(t=>`<option>${t}</option>`).join("");}
 function current(){
   const q=document.getElementById("q").value.toLowerCase().trim();
   const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
   const ft=document.getElementById("fTech").value,hide=document.getElementById("hideTest").checked;
+  const fw=document.getElementById("fWh").value;
   const df=document.getElementById("dFrom").value,dt=document.getElementById("dTo").value;
   let rows=RAW.filter(r=>{
     if(hide&&isTest(r._raw))return false;
     if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
+    if(fw&&r.warehouse!==fw)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
     if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
@@ -487,7 +506,7 @@ function renderLotReport(){
   document.getElementById("lotPick").onchange=e=>{LOT_SEL=e.target.value;renderLotReport();};
 }
 function lotCSV(){const u=lotUnits().filter(isDefective);
-  const cols=[["Date",r=>fmtDate(r.tested_at)],["Serial",r=>r.serial],["Model",r=>r.model],["Year",r=>r.year],["SKU",r=>r.sku],["Grade",r=>r.grade],["LCD grade",r=>r.display_grade],["Body grade",r=>r.body_grade],["Result",r=>r.result],["Battery %",r=>r.batt_h!=null?Math.min(100,r.batt_h):""],["Cycles",r=>r.batt_c],["Faults",r=>r.faults],["Technician",r=>r.technician],["Supplier",r=>r.supplier],["PO",r=>r.po],["Lot",r=>r.lot_id]];
+  const cols=[["Date",r=>fmtTested(r)],["Serial",r=>r.serial],["Model",r=>r.model],["Year",r=>r.year],["SKU",r=>r.sku],["Grade",r=>r.grade],["LCD grade",r=>r.display_grade],["Body grade",r=>r.body_grade],["Result",r=>r.result],["Battery %",r=>r.batt_h!=null?Math.min(100,r.batt_h):""],["Cycles",r=>r.batt_c],["Faults",r=>r.faults],["Technician",r=>r.technician],["Warehouse",r=>r.warehouse],["Supplier",r=>r.supplier],["PO",r=>r.po],["Lot",r=>r.lot_id]];
   const esc=v=>{v=(v==null?"":String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const lines=[cols.map(c=>esc(c[0])).join(",")].concat(u.map(r=>cols.map(c=>esc(c[1](r))).join(",")));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
@@ -519,7 +538,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Result",`<span class="pill ${r.result||'OTHER'}">${r.result}</span> <span class="muted">(${r.result_raw})</span>`)}
       ${row("Overall grade",`<span class="gr ${r.grade}">${r.grade}</span>`)}
       ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
-      ${row("Tested",fmtDate(r.tested_at))}${row("Technician",r.technician)}${row("Department",r.department)}</dl>
+      ${row("Tested",fmtTested(r)+(r.timezone?` <span class="muted">(${r.timezone})</span>`:""))}${row("Technician",r.technician+(r.technician_username&&r.technician_username!==r.technician?` (@${r.technician_username})`:""))}${row("Warehouse",r.warehouse)}${row("Department",r.department)}</dl>
     <div class="sec">Specification</div><dl class="kv">
       ${row("Serial",r.serial)}${row("Model",r.model)}${row("Year",r.year)}${row("Chip",r.chip)}
       ${row("CPU speed",r.cpu_speed)}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / "))}
@@ -584,7 +603,7 @@ function labelHTML(r){
     <div class="lmod">${lblEsc([r.model,r.year].filter(Boolean).join(" · "))}</div>
     <div class="lchips">${chips.map(c=>`<div class="lchip"><div class="ck">${c[0]}</div><div class="cv">${lblEsc(c[1])}</div></div>`).join("")}</div>
     ${faults.length?`<div class="lftitle">⚠ FAULTS</div><div class="lfaults">${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`:""}
-    <div class="ltech">${lblEsc(r.technician||"—")} · ${fmtDate(r.tested_at)}</div>
+    <div class="ltech">${lblEsc(r.technician||"—")} · ${fmtTested(r)}</div>
     <div class="lbc"><div class="bcb">${code128svg(r.serial,1.0,40)}</div><div class="sn">${lblEsc(r.serial||"")}</div></div>
   </div>`;}
 // DyMo + standard label presets. Each prints ONE label per unit (was spilling across many
@@ -663,7 +682,7 @@ function historyHTML(r){
     h.map(x=>`<div class="hrow${x.id===r.id?" open":""}">
       <div class="hsum" onclick="this.parentElement.classList.toggle('open')">
         <span class="hcar">▸</span>
-        <span style="min-width:150px">${fmtDate(x.tested_at)}</span>
+        <span style="min-width:150px">${fmtTested(x)}</span>
         <span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span>
         <span class="gr ${x.grade}" style="min-width:18px">${x.grade||'—'}</span>
         <span style="flex:1;min-width:80px">${x.technician||'—'}</span>
@@ -695,7 +714,7 @@ function csv(){
     ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
     ["batt_h","Battery health %"],["batt_c","Battery cycles"],["batt_cond","Battery condition"],
     ["kbd_layout","Keyboard layout"],["kbd_language","Keyboard language"],["wifi","Wi-Fi SSID"],
-    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["department","Department"],
+    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["technician_username","Tech username"],["warehouse","Warehouse"],["timezone","Timezone"],["department","Department"],
     ["lot_id","Lot"],["po","PO"],["supplier","Supplier"],["faults","Faults"],["notes","Notes"]];
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const val=(k,r)=>k==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[k];
@@ -713,7 +732,7 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelect
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","fWh","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------
