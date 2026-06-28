@@ -578,19 +578,12 @@ function labelHTML(r){
   const isPass=r.result==="PASS";
   const resTxt=isPass?"✓ PASS":(r.result?("✗ "+r.result):"—");
   return `<div class="label">
-    <div class="ltop">
-      <div class="lleft">
-        <div class="lsku"><b>SKU</b> ${lblEsc(r.sku||"—")}</div>
-        <div class="lser">${lblEsc(r.serial||"")}</div>
-        <div class="lmod">${lblEsc([r.model,r.year].filter(Boolean).join(" · "))}</div>
-        <div class="lchips">${chips.map(c=>`<div class="lchip"><div class="ck">${c[0]}</div><div class="cv">${lblEsc(c[1])}</div></div>`).join("")}</div>
-      </div>
-      <div class="lright">
-        <div class="lres"><span class="res">${resTxt}</span><span class="gr">GRADE ${r.grade||"—"}</span></div>
-        ${faults.length?`<div class="lftitle">⚠ FAULTS</div>${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}`
-                       :`<div class="lnf">No faults —<br>clean pass</div>`}
-      </div>
-    </div>
+    <div class="lhead"><span class="res">${resTxt}</span><span class="gr">GRADE ${r.grade||"—"}</span></div>
+    <div class="lsku"><b>SKU</b> ${lblEsc(r.sku||"—")}</div>
+    <div class="lser">${lblEsc(r.serial||"")}</div>
+    <div class="lmod">${lblEsc([r.model,r.year].filter(Boolean).join(" · "))}</div>
+    <div class="lchips">${chips.map(c=>`<div class="lchip"><div class="ck">${c[0]}</div><div class="cv">${lblEsc(c[1])}</div></div>`).join("")}</div>
+    ${faults.length?`<div class="lftitle">⚠ FAULTS</div><div class="lfaults">${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`:""}
     <div class="ltech">${lblEsc(r.technician||"—")} · ${fmtDate(r.tested_at)}</div>
     <div class="lbc"><div class="bcb">${code128svg(r.serial,1.0,40)}</div><div class="sn">${lblEsc(r.serial||"")}</div></div>
   </div>`;}
@@ -601,7 +594,7 @@ const LABEL_SIZES=[
   {id:"dymo11356",n:"DyMo 11356 — 89×41mm",w:89,h:41},
   {id:"dymo30252",n:"DyMo 30252 Address — 89×28mm",w:89,h:28},
   {id:"dymo30334",n:"DyMo 30334 — 57×32mm",w:57,h:32},
-  {id:"dymoship",n:"DyMo Shipping 99014 — 101×54mm (landscape)",w:101,h:54},
+  {id:"dymoship",n:"DyMo Shipping 99014 — 54×101mm",w:54,h:101},
   {id:"std4x2",n:"Standard 4×2 inch — 102×51mm",w:102,h:51},
 ];
 function curLabelSize(){const id=localStorage.getItem("qcLabelSize")||"dymoship";return LABEL_SIZES.find(s=>s.id===id)||LABEL_SIZES.find(s=>s.id==="dymoship")||LABEL_SIZES[0];}
@@ -612,30 +605,27 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
   // spill onto extra pages, so it's exactly one page per label on any browser.
   const css=`@page{size:${sz.w}mm ${sz.h}mm;margin:1.2mm}
     *{box-sizing:border-box}html,body{margin:0;padding:0}
-    .label{width:${(sz.w-2.4).toFixed(1)}mm;height:${(sz.h-2.4).toFixed(1)}mm;padding:1.3mm 1.8mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;page-break-after:always}
+    .label{width:${(sz.w-2.4).toFixed(1)}mm;height:${(sz.h-2.4).toFixed(1)}mm;padding:1.4mm 1.7mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
     .label:last-child{page-break-after:auto}
-    .ltop{display:flex;gap:2.4mm;flex:1;min-height:0;overflow:hidden}
-    .lleft{flex:1.55;min-width:0;display:flex;flex-direction:column}
-    .lright{flex:1.05;border-left:1.4pt solid #000;padding-left:1.9mm;display:flex;flex-direction:column;overflow:hidden}
-    .lsku{font-family:ui-monospace,Menlo,monospace;font-size:7pt;font-weight:700;line-height:1.15;word-break:break-all}
-    .lsku b{font-family:-apple-system,Arial,sans-serif;font-size:5pt;color:#555;font-weight:800;letter-spacing:.3pt;margin-right:1pt}
-    .lser{font-family:ui-monospace,Menlo,monospace;font-size:9.5pt;font-weight:700;letter-spacing:.3pt;margin-top:.3mm}
-    .lmod{font-size:7pt;font-weight:700;margin-top:.3mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .lchips{display:grid;grid-template-columns:repeat(3,1fr);gap:.9mm;margin-top:.9mm}
-    .lchip{border:1pt solid #000;border-radius:1mm;padding:.4mm 0;text-align:center;overflow:hidden}
-    .lchip .ck{font-size:5pt;font-weight:800;color:#555;letter-spacing:.2pt}
-    .lchip .cv{font-size:11.5pt;font-weight:800;white-space:nowrap;display:inline-block;max-width:100%}
-    .ltech{font-size:6.5pt;font-weight:700;flex:0 0 auto;padding:.7mm 0 .3mm;border-top:.4pt solid #bbb;margin-top:.6mm}
-    .lres{display:flex;align-items:center;gap:1.4mm}
-    .lres .res{font-size:12pt;font-weight:900}
-    .lres .gr{font-size:6.5pt;font-weight:800;border:1.1pt solid #000;border-radius:1mm;padding:.2mm 1.3mm;white-space:nowrap}
-    .lftitle{font-size:5.5pt;font-weight:800;color:#555;letter-spacing:.3pt;margin-top:1.2mm}
-    .lfl{font-size:7pt;font-weight:700;line-height:1.25;margin-top:.4mm}
-    .lnf{font-size:6.5pt;color:#555;margin-top:2mm}
+    .lhead{display:flex;align-items:center;justify-content:space-between;border-bottom:1.5pt solid #000;padding-bottom:.8mm}
+    .lhead .res{font-size:15pt;font-weight:900}
+    .lhead .gr{font-size:8pt;font-weight:800;border:1.2pt solid #000;border-radius:1mm;padding:.3mm 1.5mm;white-space:nowrap}
+    .lsku{font-family:ui-monospace,Menlo,monospace;font-size:7.5pt;font-weight:700;white-space:nowrap;overflow:hidden;margin-top:1.3mm}
+    .lsku b{font-family:-apple-system,Arial,sans-serif;font-size:5.5pt;color:#555;font-weight:800;letter-spacing:.3pt;margin-right:1pt}
+    .lser{font-family:ui-monospace,Menlo,monospace;font-size:13pt;font-weight:700;letter-spacing:.3pt;margin-top:.4mm}
+    .lmod{font-size:8pt;font-weight:700;margin-top:.4mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lchips{display:grid;grid-template-columns:repeat(2,1fr);gap:1mm;margin-top:1.4mm}
+    .lchip{border:1pt solid #000;border-radius:1mm;padding:.7mm 0;text-align:center;overflow:hidden}
+    .lchip .ck{font-size:6pt;font-weight:800;color:#555;letter-spacing:.2pt}
+    .lchip .cv{font-size:12pt;font-weight:800;white-space:nowrap;display:inline-block;max-width:100%}
+    .lftitle{font-size:6.5pt;font-weight:800;color:#555;letter-spacing:.3pt;margin-top:1.4mm}
+    .lfaults{overflow:hidden}
+    .lfl{font-size:8pt;font-weight:700;line-height:1.3}
+    .ltech{font-size:7.5pt;font-weight:700;margin-top:auto;border-top:.4pt solid #bbb;padding-top:.8mm}
     .lbc{flex:0 0 auto;text-align:center;margin-top:1mm}
-    .lbc .bcb{height:9mm;width:100%;overflow:hidden}
+    .lbc .bcb{height:12mm;width:100%;overflow:hidden}
     .lbc .bcb svg{width:100%;height:100%;display:block}
-    .lbc .sn{font-family:ui-monospace,monospace;font-size:6pt;letter-spacing:.5pt}`;
+    .lbc .sn{font-family:ui-monospace,monospace;font-size:7pt;letter-spacing:.5pt}`;
   let f=document.getElementById("printFrame");if(f)f.remove();
   f=document.createElement("iframe");f.id="printFrame";f.setAttribute("aria-hidden","true");
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
@@ -650,6 +640,9 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
     idoc.querySelectorAll(".lchip").forEach(box=>{const el=box.querySelector(".cv");if(!el)return;
       const max=box.clientWidth-3;let fs=parseFloat(iwin.getComputedStyle(el).fontSize)||11,g=0;
       while(el.offsetWidth>max&&fs>4&&g++<40){fs-=0.3;el.style.fontSize=fs+"px";}});
+    // A too-long SKU shrinks to fit ONE line (never wraps/pushes the rest of the label off).
+    idoc.querySelectorAll(".lsku").forEach(el=>{let fs=parseFloat(iwin.getComputedStyle(el).fontSize)||7.5,g=0;
+      while(el.scrollWidth>el.clientWidth+1&&fs>4.5&&g++<40){fs-=0.3;el.style.fontSize=fs+"px";}});
     iwin.focus();iwin.print();
   }catch(e){alert("Print failed: "+e.message);}},300);}
 function printLabel(){if(CURRENT)printLabels([CURRENT]);}
