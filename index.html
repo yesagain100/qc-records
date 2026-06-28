@@ -224,11 +224,25 @@ const FAULT_MAP={
   "Speakers — L/R channels":"Speaker fault","Microphone records":"Microphone fault","FaceTime camera":"Camera fault","Light sensor responds":"Light sensor fault",
   "Hinge firm, lid aligned":"Hinge / lid loose or misaligned","Activation Lock OFF":"Activation Lock ON","Not MDM enrolled":"MDM enrolled","Not DEP-assigned":"DEP-assigned",
   "DEP clear (live check / post-erase)":"DEP not clear","Sleep / wake works":"Sleep / wake fault","No recurring kernel panics":"Kernel panic(s)"};
-function faultPhrase(f){f=String(f).trim().replace(/^Category:\s*/i,"");return f?(FAULT_MAP[f]||f):"";}
+// ctx = {h: battery health %, cond: macOS battery condition} lets the battery capacity/condition
+// check name resolve to its ACTUAL reason — capacity vs macOS "Service Recommended" — so a 100%
+// battery never reads as "<85%".
+function faultPhrase(f,ctx){
+  f=String(f).trim().replace(/^Category:\s*/i,""); if(!f) return "";
+  if(/Battery\s*≥?\s*85%?\s*capacity/i.test(f)||f==="Battery <85% / service-recommended"){
+    if(ctx){
+      if(ctx.h!=null&&ctx.h<85) return "Battery capacity <85%";
+      if(ctx.cond&&/service|replace|fair|poor/i.test(ctx.cond)) return `Battery: macOS condition “${ctx.cond}”`;
+      return "Battery: service-recommended (macOS)";
+    }
+  }
+  return FAULT_MAP[f]||f;
+}
 function flat(r){const s=r.snapshot||{};
+  const _bh=num(r.battery_health??s.battery_health), _bc=r.battery_condition||s.battery_condition||"";
   const faults=[...new Set(
     [r.failed_categories,s.fault1,s.fault2,s.fault3,s.fault4,s.fault5,s.fault6,r.screen_issues,r.defects]
-    .filter(x=>x&&String(x).trim()).flatMap(x=>String(x).split(";")).map(faultPhrase).filter(Boolean)
+    .filter(x=>x&&String(x).trim()).flatMap(x=>String(x).split(";")).map(f=>faultPhrase(f,{h:_bh,cond:_bc})).filter(Boolean)
   )].join("; ");
   return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
