@@ -248,6 +248,7 @@ function flat(r){const s=r.snapshot||{};
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
     technician:r.technician||s.technician||"",technician_username:s.technician_username||"",department:s.department||"",
     warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
+    app_build:s.app_build||"",app_kind:s.app_kind||"",
     grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
     result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
     batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
@@ -564,7 +565,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Result",`<span class="pill ${r.result||'OTHER'}">${r.result}</span> <span class="muted">(${r.result_raw})</span>`)}
       ${row("Overall grade",`<span class="gr ${r.grade}">${r.grade}</span>`)}
       ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
-      ${row("Tested",fmtTested(r)+(r.timezone?` <span class="muted">(${r.timezone})</span>`:""))}${row("Technician",r.technician+(r.technician_username&&r.technician_username!==r.technician?` (@${r.technician_username})`:""))}${row("Warehouse",r.warehouse)}${row("Department",r.department)}</dl>
+      ${row("Tested",fmtTested(r)+(r.timezone?` <span class="muted">(${r.timezone})</span>`:""))}${row("Technician",r.technician+(r.technician_username&&r.technician_username!==r.technician?` (@${r.technician_username})`:""))}${row("Warehouse",r.warehouse)}${row("Department",r.department)}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+r.app_build):"")}</dl>
     <div class="sec">Specification</div><dl class="kv">
       ${row("Serial",r.serial)}${row("Model",r.model)}${row("Year",r.year)}${row("Chip",r.chip)}
       ${row("CPU speed",r.cpu_speed)}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / "))}
@@ -653,9 +654,11 @@ function fillLabelSizes(){const sel=document.getElementById("labelSize");if(!sel
 function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize();
   // Print in an ISOLATED iframe containing ONLY the labels — no dashboard layout can
   // spill onto extra pages, so it's exactly one page per label on any browser.
-  const css=`@page{size:${sz.w}mm ${sz.h}mm;margin:1mm}
+  // Vertical safe inset for the printer's non-printable dead zone (~1.5mm top/bottom on DyMo
+  // thermal heads). The label fills the media; padding keeps the barcode/serial off the dead edge.
+  const css=`@page{size:${sz.w}mm ${sz.h}mm;margin:0}
     *{box-sizing:border-box}html,body{margin:0;padding:0}
-    .label{width:${(sz.w-2).toFixed(1)}mm;height:${(sz.h-2).toFixed(1)}mm;padding:1.2mm 2.2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
+    .label{width:${sz.w}mm;height:${sz.h}mm;padding:1.6mm 2.4mm 2.2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
     .label:last-child{page-break-after:auto}
     .lhead{display:flex;align-items:center;justify-content:space-between;border-bottom:1.5pt solid #000;padding-bottom:.5mm;flex:0 0 auto;gap:2.5mm}
     .lhl{display:flex;align-items:baseline;gap:2.5mm;min-width:0}
@@ -702,6 +705,13 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
     idoc.querySelectorAll(".lflist").forEach(col=>{const fls=[...col.querySelectorAll(".lfl")];if(!fls.length)return;
       let fs=parseFloat(iwin.getComputedStyle(fls[0]).fontSize)||9,g=0;
       while(col.scrollHeight>col.clientHeight+0.5&&fs>4&&g++<60){fs-=0.2;fls.forEach(e=>e.style.fontSize=fs+"px");}});
+    // FINAL FIT — nothing may overflow the label's printable height, or the bottom element (the
+    // barcode + serial) gets clipped. This is the bottom cut-off on the taller media (99014
+    // 101×54, 4×2 102×51). If a label still overflows, shrink its barcode (the one fixed-height
+    // block) until everything fits. Floor keeps the barcode tall enough to stay scannable.
+    idoc.querySelectorAll(".label").forEach(lab=>{const bc=lab.querySelector(".lbc svg");if(!bc)return;
+      let g=0;while(lab.scrollHeight>lab.clientHeight+0.5&&g++<40){
+        const h=parseFloat(iwin.getComputedStyle(bc).height)||45;if(h<=26)break;bc.style.height=(h-2)+"px";}});
     iwin.focus();iwin.print();
   }catch(e){alert("Print failed: "+e.message);}},300);}
 function printLabel(){if(CURRENT)printLabels([CURRENT]);}
@@ -754,7 +764,7 @@ function csv(){
     ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
     ["batt_h","Battery health %"],["batt_c","Battery cycles"],["batt_cond","Battery condition"],
     ["kbd_layout","Keyboard layout"],["kbd_language","Keyboard language"],["wifi","Wi-Fi SSID"],
-    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["technician_username","Tech username"],["warehouse","Warehouse"],["timezone","Timezone"],["department","Department"],
+    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["technician_username","Tech username"],["warehouse","Warehouse"],["timezone","Timezone"],["app_kind","App (main/legacy)"],["app_build","App build"],["department","Department"],
     ["lot_id","Lot"],["po","PO"],["supplier","Supplier"],["faults","Faults"],["notes","Notes"]];
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const val=(k,r)=>k==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[k];
