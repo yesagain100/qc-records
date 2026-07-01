@@ -804,12 +804,61 @@ function enter(){document.getElementById("login").style.display="none";
 document.getElementById("bulkBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("bulkMenu");
   const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderBulkMenu();};
 document.addEventListener("click",e=>{if(!e.target.closest("#bulkMenu")&&e.target.id!=="bulkBtn")closeBulk();});
+// ---- PUBLIC verify (the "QC code" on the certificate) -----------------------
+// Scanning the certificate QR opens ?verify=<serial>. That shows a read-only public
+// verification of the unit's QC result — NO login — so a buyer/reseller can confirm it.
+// Uses the same anon key the dashboard already reads audits with (client-side gate only).
+async function verifyView(serial){
+  document.getElementById("login").style.display="none";
+  const ov=document.createElement("div");
+  ov.id="verifyOverlay";
+  ov.style.cssText="position:fixed;inset:0;z-index:200;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;font-family:-apple-system,Arial,sans-serif";
+  ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:460px;width:100%;padding:30px 30px 22px;box-shadow:0 24px 70px rgba(0,0,0,.45);text-align:center"><img src="logo_orange.png" alt="YesAgain" style="height:34px;margin-bottom:6px"><div id="vBody" style="margin-top:8px;color:#112747">Checking…</div><div style="margin-top:18px;font-size:11px;color:#8a97ad">Verified by Yes Check QC · © YesAgain Group</div></div>';
+  document.body.appendChild(ov);
+  const B=document.getElementById("vBody");
+  try{
+    const q=encodeURIComponent(serial);
+    let rows=await (await fetch(`${SUPA}/rest/v1/audits?serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+    if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
+      rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+    }
+    if(!Array.isArray(rows)||!rows.length){
+      B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
+    }
+    const r=rows.map(flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
+    const pass=r.result==="PASS";
+    const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
+    const when=(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
+    const specParts=[r.chip,r.memory?r.memory+"GB":"",r.storage?r.storage+"GB SSD":"",r.colour].filter(Boolean);
+    B.innerHTML=`
+      <div style="font-size:46px;line-height:1">${pass?"✅":"⚠️"}</div>
+      <h2 style="margin:6px 0 2px;font-size:22px;color:${pass?"#1d9e75":"#d6453d"}">${pass?"Verified — Passed QC":"On record — did not pass"}</h2>
+      <p style="color:#5b6b82;font-size:13px;margin:0 0 14px">${pass?"This device passed the Yes Check quality-assurance inspection.":"This serial's latest Yes Check result was not a pass."}</p>
+      <div style="text-align:left;border:1px solid #e6e9ef;border-radius:12px;padding:14px 16px">
+        <div style="font-size:16px;font-weight:800">${escv(r.model||"—")}</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#5b6b82;margin-bottom:2px">Serial ${escv(r.serial||"—")}</div>
+        ${specParts.length?`<div style="font-size:12px;color:#5b6b82;margin-bottom:8px">${escv(specParts.join(" · "))}</div>`:""}
+        ${vrow("Result",`<b style="color:${pass?"#1d9e75":"#d6453d"}">${escv(r.result||"—")}</b>`)}
+        ${vrow("Grade",escv((r.grade?("Grade "+r.grade):"—")+(gl?" · "+gl:"")))}
+        ${vrow("Inspected",escv(when||"—")+(r.warehouse?(" · "+escv(r.warehouse)):""))}
+      </div>
+      ${r.batt_h!=null?`<div style="margin-top:12px;padding:12px;background:#f3faf6;border:1px solid #d4ecdf;border-radius:12px">
+        <div style="font-size:11px;font-weight:800;color:#5b6b82;letter-spacing:.4px">BATTERY HEALTH</div>
+        <div style="font-size:30px;font-weight:800;color:#1d9e75;line-height:1.1">${Math.min(100,r.batt_h)}%</div>
+        <div style="font-size:12px;color:#5b6b82">${r.batt_c!=null?r.batt_c+" cycles":""}${r.batt_cond?"  ·  "+escv(r.batt_cond):""}</div>
+      </div>`:""}`;
+  }catch(e){B.innerHTML=`<h2 style="margin:8px 0">Couldn't verify right now</h2><p style="color:#5b6b82;font-size:14px">Please try again shortly. (${escv(e.message)})</p>`;}
+}
+function vrow(k,v){return `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid #eef1f7"><span style="color:#5b6b82;font-size:13px">${k}</span><span style="font-size:13px;font-weight:600;text-align:right">${v}</span></div>`;}
+function escv(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function requireLogin(){if(sessionStorage.getItem("qcUser"))enter();
   else{fillLoginUsers();document.getElementById("login").style.display="flex";}}
 document.getElementById("lbtn").onclick=doLogin;
 document.getElementById("lpin").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
 document.getElementById("logout").onclick=()=>{sessionStorage.removeItem("qcUser");location.reload();};
-requireLogin();
+// A certificate QR (?verify=<serial>) opens the PUBLIC verification — no login. Otherwise the gate.
+{const _v=new URLSearchParams(location.search).get("verify");
+ if(_v)verifyView(_v.trim()); else requireLogin();}
 </script>
 </body>
 </html>
