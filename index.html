@@ -731,6 +731,9 @@ function certHTML(r){
   const spec=[["Model",r.model],["Model ID",mid],["Year",r.year],["Chip",r.chip],["CPU",cpu],["GPU",gpu],
     ["Memory",r.memory?r.memory+" GB":""],["Storage",r.storage?r.storage+" GB":""],
     ["Colour",r.colour],["SKU",r.sku]].filter(x=>x[1]);
+  // Safety: the certificate can ONLY certify a genuine PASS. Even if a caller bypasses the
+  // printCert gate, certHTML itself refuses to render a "PASSED" document for a non-pass record.
+  if(r.result!=="PASS") return `<div class="cert" style="text-align:center;padding:40px"><img class="clogo" src="logo_orange.png" style="height:40px;filter:brightness(0)"><h2 style="color:#d6453d">No certificate — this unit did not pass</h2><p style="color:#5b6b82">Serial ${lblEsc(r.serial||"—")} · result ${lblEsc(r.result||"—")}. Certificates are issued for passed units only.</p></div>`;
   const when=(r.tested_local||fmtTested(r)||"");
   const rowsHTML=spec.map((x,i)=>`<div class="crow${i===spec.length-1?" last":""}"><span class="ck">${lblEsc(x[0])}</span><span class="cv">${lblEsc(x[1])}</span></div>`).join("");
   const cats=CERT_CATEGORIES.map(c=>`<div class="ccat"><span class="cchk">✓</span>${lblEsc(c)}</div>`).join("");
