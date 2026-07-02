@@ -563,16 +563,16 @@ function openRowObj(r){if(!r)return;CURRENT=r;
   const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
   document.getElementById("mBody").innerHTML=`
     <dl class="kv">
-      ${row("Result",`<span class="pill ${r.result||'OTHER'}">${r.result}</span> <span class="muted">(${r.result_raw})</span>`)}
-      ${row("Overall grade",`<span class="gr ${r.grade}">${r.grade}</span>`)}
-      ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
-      ${row("Tested",fmtTested(r)+(r.timezone?` <span class="muted">(${r.timezone})</span>`:""))}${row("Technician",r.technician+(r.technician_username&&r.technician_username!==r.technician?` (@${r.technician_username})`:""))}${row("Warehouse",r.warehouse)}${row("Department",r.department)}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+r.app_build):"")}</dl>
+      ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
+      ${row("Overall grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
+      ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).map(escv).join(" / "))}
+      ${row("Tested",escv(fmtTested(r))+(r.timezone?` <span class="muted">(${escv(r.timezone)})</span>`:""))}${row("Technician",escv(r.technician)+(r.technician_username&&r.technician_username!==r.technician?` (@${escv(r.technician_username)})`:""))}${row("Warehouse",escv(r.warehouse))}${row("Department",escv(r.department))}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+escv(r.app_build)):"")}</dl>
     <div class="sec">Specification</div><dl class="kv">
-      ${row("Serial",r.serial)}${row("Model",r.model)}${row("Year",r.year)}${row("Chip",r.chip)}
-      ${row("CPU speed",r.cpu_speed)}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).join(" / "))}
+      ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("Year",escv(r.year))}${row("Chip",escv(r.chip))}
+      ${row("CPU speed",escv(r.cpu_speed))}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).map(escv).join(" / "))}
       ${row("RAM",r.memory?r.memory+" GB":"")}${row("SSD / Storage",r.storage?r.storage+" GB":"")}
-      ${row("Colour",r.colour)}${row("SKU",r.sku)}${row("Part number",r.part_number)}
-      ${row("Keyboard",[r.kbd_layout,r.kbd_language].filter(Boolean).join(" · "))}</dl>
+      ${row("Colour",escv(r.colour))}${row("SKU",escv(r.sku))}${row("Part number",escv(r.part_number))}
+      ${row("Keyboard",[r.kbd_layout,r.kbd_language].filter(Boolean).map(escv).join(" · "))}</dl>
     <div class="sec">Battery &amp; performance</div><dl class="kv">
       ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
       ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
@@ -721,7 +721,14 @@ function printLabel(){if(CURRENT)printLabels([CURRENT]);}
 const CERT_CATEGORIES=["Display","Camera","Light sensor","Keyboard","Trackpad","Touch ID","Wi-Fi",
   "Bluetooth","Speakers","Microphone","Ports & USB","Battery","Thermals","RAM","SSD","Performance","Charger","Cosmetics"];
 function certVerifyURL(r){return "https://yesagain100.github.io/qc-records/?verify="+encodeURIComponent(r.serial||"");}
-function certId(r){const d=(r.tested_at||r.tested_local||"").replace(/\D/g,"").slice(2,8)||"";return "YC-"+String(r.serial||"").replace(/\s/g,"").slice(0,10)+(d?"-"+d:"");}
+function certId(r){
+  // Stable per-record ref: YC-<serial[:10]>-<yyMMdd-HHmm> from the record's test time.
+  // Parse a real Date (tested_local is station wall-clock; tested_at is ISO) — the old
+  // digit-slice produced garbage on the 'd MMM yyyy HH:mm' fallback format.
+  const dt=new Date(r.tested_local||r.tested_at||"");let suf="";
+  if(!isNaN(dt.getTime())){const p=n=>String(n).padStart(2,"0");
+    suf=`${p(dt.getFullYear()%100)}${p(dt.getMonth()+1)}${p(dt.getDate())}-${p(dt.getHours())}${p(dt.getMinutes())}`;}
+  return "YC-"+String(r.serial||"").replace(/\s/g,"").slice(0,10)+(suf?"-"+suf:"");}
 function certQRSvg(url){try{const q=qrcode(0,'M');q.addData(url);q.make();return q.createSvgTag({cellSize:3,margin:0,scalable:true});}catch(e){return "";}}
 function certHTML(r){
   const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
@@ -746,7 +753,9 @@ function certHTML(r){
     <div class="cbanner"><div class="cbmodel">${lblEsc(r.model||"—")}</div><div class="cbserial">Serial&nbsp;&nbsp;${lblEsc(r.serial||"—")}</div></div>
     <div class="cmain"><div class="cspec"><div class="cslabel">DEVICE SPECIFICATION</div>${rowsHTML}</div>
       <div class="cside">${batt}<div class="cqr">${certQRSvg(certVerifyURL(r))}<div class="cqrt">Scan to verify online</div><div class="cqru">yesagain100.github.io/qc-records</div></div></div></div>
-    <div class="cchecks"><div class="cslabel">INSPECTED &amp; PASSED · ${CERT_CATEGORIES.length} checks</div><div class="ccats">${cats}</div></div>
+    <div class="cchecks"><div class="cslabel">QUALITY INSPECTION</div>
+      <div style="font-size:12px;font-weight:600;margin-top:4px">✓ Passed the full Yes Check QC inspection</div>
+      <div style="font-size:9.5px;color:#5b6b82;margin-top:3px;line-height:1.5">All applicable checks for this device — hardware &amp; system, display, keyboard, trackpad, audio, camera &amp; sensors, wireless, ports, battery, thermals, storage, performance and cosmetics.</div></div>
     <div class="cfoot"><div class="cfl"><div><b>Certificate</b>&nbsp; ${lblEsc(certId(r))}</div><div>Issued&nbsp; ${lblEsc(when)}</div><div>Technician&nbsp; ${lblEsc(r.technician||"—")}</div></div>
       <div class="cbc2">${code128svg(r.serial,1.1,44)}<div class="cbcs">${lblEsc(r.serial||"")}</div></div></div>
     <div class="ccopy">© YesAgain Group · Yes Check QC. Reflects the device's condition at the time of inspection.</div>
@@ -793,11 +802,11 @@ function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW
 // Full QC history for one unit (all prior tests on the same serial).
 function histDetailHTML(x){const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
   return `<dl class="kv" style="font-size:12px">
-    ${row("Result",x.result_raw||x.result)}${row("Grade",`${x.grade||"—"} (LCD ${x.display_grade||"—"} / Body ${x.body_grade||"—"})`)}
-    ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc"+(x.batt_cond?" · "+x.batt_cond:""):"")}
-    ${row("Storage",x.storage?x.storage+" GB":"")}${row("Performance",x.perf_score)}${row("Department",x.department)}
-    ${row("Faults",x.faults?`<span style="color:var(--bad)">${x.faults}</span>`:"none")}
-    ${row("Notes",x.notes)}</dl>`;}
+    ${row("Result",escv(x.result_raw||x.result))}${row("Grade",`${escv(x.grade||"—")} (LCD ${escv(x.display_grade||"—")} / Body ${escv(x.body_grade||"—")})`)}
+    ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc"+(x.batt_cond?" · "+escv(x.batt_cond):""):"")}
+    ${row("Storage",x.storage?x.storage+" GB":"")}${row("Performance",escv(x.perf_score))}${row("Department",escv(x.department))}
+    ${row("Faults",x.faults?`<span style="color:var(--bad)">${escv(x.faults)}</span>`:"none")}
+    ${row("Notes",escv(x.notes))}</dl>`;}
 function historyHTML(r){
   const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
     .sort((a,b)=>(b.tested_at||"")>(a.tested_at||"")?1:-1);
