@@ -577,11 +577,38 @@ function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
       ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
     <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
+    ${testExecHTML(r)}
     ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
     ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
     ${historyHTML(r)}`;
   fillLabelSizes();
   document.getElementById("modal").classList.add("show");}
+/* Test-execution accountability: did the tech actually RUN each automated /
+   performance test, and for how long? Durations are recorded by the engine —
+   not entered by hand — so a skipped or cut-short test is visible here. */
+function testExecHTML(r){
+  const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
+  if(!d) return "";
+  const TESTS=[["thermal","Thermal / CPU stress"],["ram","Memory (RAM)"],["ssd","Storage (SSD)"],
+    ["battcell","Battery cell balance"],["battery","Battery drain"],["perf","Performance benchmark"],
+    ["memstress","Memory under heat"],["thermalcycle","Thermal-shock cycler"]];
+  const fmtD=s=>{if(s==null||s<=0)return"—";s=Math.round(s);return s>=60?Math.floor(s/60)+"m "+(s%60)+"s":s+"s";};
+  let any=false;
+  const rows=TESTS.map(([id,name])=>{
+    const x=d[id];
+    const has=x&&typeof x==="object"&&("ran" in x||"duration_s" in x||"verdict" in x);
+    if(has)any=true;
+    const ran=has&&(x.ran===true||(!("ran" in x)&&!!x.verdict));
+    return `<tr><td>${escv(name)}</td>
+      <td style="font-weight:700;color:${ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${ran?"RUN — "+fmtD(x.duration_s):"NOT RUN"}</td>
+      <td class="muted">${has?escv(x.verdict||"—"):"—"}</td></tr>`;
+  }).join("");
+  if(!any) return "";   // old audits without the fields — no false NOT-RUNs
+  return `<div class="sec">Test execution — proof of run</div>
+    <table style="font-size:12px"><thead><tr><th>Test</th><th>Executed</th><th>Engine verdict</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:4px">Run lengths recorded by the engine — not entered by the technician.</div>`;
+}
 function closeModal(){document.getElementById("modal").classList.remove("show");}
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
 
