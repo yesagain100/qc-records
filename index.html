@@ -577,11 +577,13 @@ function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
       ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
     <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
+    <div id="wipeSec"></div>
     ${testExecHTML(r)}
     ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
     ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
     ${historyHTML(r)}`;
   fillLabelSizes();
+  loadWipeStatus(r.serial);
   document.getElementById("modal").classList.add("show");}
 /* Test-execution accountability: did the tech actually RUN each automated /
    performance test, and for how long? Durations are recorded by the engine —
@@ -608,6 +610,38 @@ function testExecHTML(r){
     <table style="font-size:12px"><thead><tr><th>Test</th><th>Executed</th><th>Engine verdict</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div class="muted" style="font-size:11px;margin-top:4px">Run lengths recorded by the engine — not entered by the technician.</div>`;
+}
+/* Data-wipe certification status — read from the wipe_certificate_status view
+   (single source of truth). HONESTY RULE: an initiated-only certificate never
+   renders as "wiped ✓"; only evidence-verified + issued certs show as certified. */
+async function loadWipeStatus(serial){
+  const el=document.getElementById("wipeSec");
+  if(!el||!serial) return;
+  try{
+    const rows=await (await fetch(`${SUPA}/rest/v1/wipe_certificate_status?serial=eq.${encodeURIComponent(serial)}&select=certificate_id,derived_status,verified_at,initiated_row_at,wipe_certificate:initiated_cert&order=initiated_row_at.desc&limit=5`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+    if(!Array.isArray(rows)||!rows.length){el.innerHTML="";return;}
+    const S={certified:["CERTIFIED — wipe verified","var(--ok,#1d9e75)"],
+      verified_pending_issue:["Wipe verified — certificate pending issue","var(--ok,#1d9e75)"],
+      verification_pending:["Wipe initiated — verification pending","#c77700"],
+      inconclusive:["Wipe verification INCONCLUSIVE — re-verify","#c77700"],
+      unverified_expired:["UNVERIFIED — not certified","var(--bad,#c0392b)"],
+      failed:["WIPE VERIFICATION FAILED","var(--bad,#c0392b)"]};
+    let h='<div class="sec">Data erasure</div>';
+    rows.forEach(r0=>{
+      const c=r0.wipe_certificate||{};
+      const st=S[r0.derived_status]||[r0.derived_status,"#888"];
+      const lvl=c.certification_level?` · ${escv(c.certification_level)}`:"";
+      const cat=(c.standards&&c.standards.nist_sp_800_88_r1&&c.standards.nist_sp_800_88_r1.category)
+                ? ` · NIST 800-88: ${escv(c.standards.nist_sp_800_88_r1.category)}`:"";
+      const signed=c.signature?` · signed (key ${escv((c.signature.key_id||"").slice(0,8))}…)`:" · unsigned";
+      h+=`<div style="border-left:4px solid ${st[1]};padding:6px 10px;margin:4px 0;font-size:13px;background:rgba(0,0,0,.02)">
+        <b style="color:${st[1]}">${st[0]}</b>
+        <div class="muted" style="font-size:11.5px">${escv(r0.certificate_id||"")}${lvl}${cat}${c.cert_version===2?signed:""}
+        · initiated ${escv((r0.initiated_row_at||"").slice(0,16).replace("T"," "))}${r0.verified_at?` · verified ${escv(r0.verified_at.slice(0,16).replace("T"," "))}`:""}</div></div>`;
+    });
+    el.innerHTML=h;
+  }catch(e){el.innerHTML="";}
 }
 function closeModal(){document.getElementById("modal").classList.remove("show");}
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
