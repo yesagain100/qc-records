@@ -239,6 +239,16 @@ function faultPhrase(f,ctx){
   }
   return FAULT_MAP[f]||f;
 }
+// The accountable identity for a QC record is the LOGIN username (e.g. @swanzy),
+// not the generic role "Technician" some accounts carry as a display name. Show
+// the username when the name is empty or the generic "Technician"; otherwise show
+// the real name (with @username appended when they differ).
+function techLabel(name,user){
+  const n=(name||"").trim(), u=(user||"").trim();
+  if(u && (!n || n.toLowerCase()==="technician")) return "@"+u;
+  if(u && n && u.toLowerCase()!==n.toLowerCase()) return n+" (@"+u+")";
+  return n || (u?"@"+u:"");
+}
 function flat(r){const s=r.snapshot||{};
   const _bh=num(r.battery_health??s.battery_health), _bc=r.battery_condition||s.battery_condition||"";
   const faults=[...new Set(
@@ -247,7 +257,8 @@ function flat(r){const s=r.snapshot||{};
   )].join("; ");
   return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
-    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",department:s.department||"",
+    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
+    tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),department:s.department||"",
     warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
     app_build:s.app_build||"",app_kind:s.app_kind||"",
     grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
@@ -303,7 +314,7 @@ const ALLCOLS=[
   {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${r.cpu_speed||"—"}</td>`},
   {key:"cores",label:"CPU/GPU cores",html:r=>`<td class="muted">${(r.cpu_cores||r.gpu_cores)?((r.cpu_cores?r.cpu_cores+"C":"")+(r.gpu_cores?r.gpu_cores+"G":"")):"—"}</td>`},
   {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
-  {key:"technician",label:"Technician",sk:"technician",html:r=>`<td>${r.technician||"—"}</td>`},
+  {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
   {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
   {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
   {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
@@ -361,7 +372,7 @@ async function load(){
     el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
 }
-function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.technician).filter(Boolean))].sort();
+function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.tech_disp).filter(Boolean))].sort();
   document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
   // Fixed region groups (UAE/France/UK) + "Other" only if some record doesn't map to one.
   const groups=new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>regionGroup(r)).filter(Boolean));
@@ -377,11 +388,11 @@ function current(){
   const df=document.getElementById("dFrom").value,dt=document.getElementById("dTo").value;
   let rows=RAW.filter(r=>{
     if(hide&&isTest(r._raw))return false;
-    if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.technician!==ft)return false;
+    if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.tech_disp!==ft)return false;
     if(fw&&regionGroup(r)!==fw)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
-    if(q){const hay=[r.serial,r.model,r.technician,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
   // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
   if(document.getElementById("uniqSerial").checked){
@@ -430,7 +441,7 @@ function renderAnalysis(rows){
   real.forEach(r=>{byRes[r.result||"—"]=(byRes[r.result||"—"]||0)+1;
     byGr[r.grade||"—"]=(byGr[r.grade||"—"]||0)+1;
     if(r.model)byModel[r.model]=(byModel[r.model]||0)+1;
-    if(r.technician)byTech[r.technician]=(byTech[r.technician]||0)+1;
+    if(r.tech_disp)byTech[r.tech_disp]=(byTech[r.tech_disp]||0)+1;
     const def=isDefective(r)?1:0;
     if(def&&r.model)modelDef[r.model]=(modelDef[r.model]||0)+1;   // unique DEFECTIVE units of this model
     if(r.supplier){const s=bySup[r.supplier]=bySup[r.supplier]||{total:0,fail:0};s.total++;s.fail+=def;}
@@ -502,7 +513,7 @@ function renderLotReport(){
       <td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>
       <td>${r.batt_h!=null?Math.min(100,r.batt_h)+"%":"—"}</td>
       <td style="white-space:normal;color:var(--bad);font-size:12px">${r.faults||""}</td>
-      <td class="muted">${r.technician||""}</td><td class="muted" style="white-space:nowrap">${fmtDate(r.tested_at)}</td></tr>`).join("")
+      <td class="muted">${escv(r.tech_disp)}</td><td class="muted" style="white-space:nowrap">${fmtDate(r.tested_at)}</td></tr>`).join("")
     ||`<tr><td colspan="9" class="empty">No defects in this lot — every unit passed clean. 🎉</td></tr>`;
   host.innerHTML=`
     <div class="lotbar">
@@ -534,7 +545,7 @@ function renderLotReport(){
   document.getElementById("lotPick").onchange=e=>{LOT_SEL=e.target.value;renderLotReport();};
 }
 function lotCSV(){const u=lotUnits().filter(isDefective);
-  const cols=[["Date",r=>fmtTested(r)],["Serial",r=>r.serial],["Model",r=>r.model],["Year",r=>r.year],["SKU",r=>r.sku],["Grade",r=>r.grade],["LCD grade",r=>r.display_grade],["Body grade",r=>r.body_grade],["Result",r=>r.result],["Battery %",r=>r.batt_h!=null?Math.min(100,r.batt_h):""],["Cycles",r=>r.batt_c],["Faults",r=>r.faults],["Technician",r=>r.technician],["Warehouse",r=>r.warehouse],["Supplier",r=>r.supplier],["PO",r=>r.po],["Lot",r=>r.lot_id]];
+  const cols=[["Date",r=>fmtTested(r)],["Serial",r=>r.serial],["Model",r=>r.model],["Year",r=>r.year],["SKU",r=>r.sku],["Grade",r=>r.grade],["LCD grade",r=>r.display_grade],["Body grade",r=>r.body_grade],["Result",r=>r.result],["Battery %",r=>r.batt_h!=null?Math.min(100,r.batt_h):""],["Cycles",r=>r.batt_c],["Faults",r=>r.faults],["Technician",r=>r.tech_disp],["Warehouse",r=>r.warehouse],["Supplier",r=>r.supplier],["PO",r=>r.po],["Lot",r=>r.lot_id]];
   const esc=v=>{v=(v==null?"":String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
   const lines=[cols.map(c=>esc(c[0])).join(",")].concat(u.map(r=>cols.map(c=>esc(c[1](r))).join(",")));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
@@ -691,7 +702,7 @@ function labelHTML(r){
     ? `<div class="lftitle">⚠ FAULTS (${faults.length})</div><div class="lflist">${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
     : `<div class="lftitle">RESULT</div><div class="lflist"><div class="lclean">✓ No faults<div class="sub">Clean pass — all checks OK</div></div></div>`;
   return `<div class="label">
-    <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.technician||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${r.grade||"—"}</span></div>
+    <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.tech_disp||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${r.grade||"—"}</span></div>
     <div class="lsku"><b>SKU</b> ${lblEsc(r.sku||"—")}</div>
     <div class="lmodel">${model}</div>
     <div class="lbody">
@@ -817,7 +828,7 @@ function certHTML(r){
     <div class="cchecks"><div class="cslabel">QUALITY INSPECTION</div>
       <div style="font-size:12px;font-weight:600;margin-top:4px">✓ Passed the full Yes Check QC inspection</div>
       <div style="font-size:9.5px;color:#5b6b82;margin-top:3px;line-height:1.5">All applicable checks for this device — hardware &amp; system, display, keyboard, trackpad, audio, camera &amp; sensors, wireless, ports, battery, thermals, storage, performance and cosmetics.</div></div>
-    <div class="cfoot"><div class="cfl"><div><b>Certificate</b>&nbsp; ${lblEsc(certId(r))}</div><div>Issued&nbsp; ${lblEsc(when)}</div><div>Technician&nbsp; ${lblEsc(r.technician||"—")}</div></div>
+    <div class="cfoot"><div class="cfl"><div><b>Certificate</b>&nbsp; ${lblEsc(certId(r))}</div><div>Issued&nbsp; ${lblEsc(when)}</div><div>Technician&nbsp; ${lblEsc(r.tech_disp||"—")}</div></div>
       <div class="cbc2">${code128svg(r.serial,1.1,44)}<div class="cbcs">${lblEsc(r.serial||"")}</div></div></div>
     <div class="ccopy">© YesAgain Group · Yes Check QC. Reflects the device's condition at the time of inspection.</div>
   </div>`;
@@ -879,7 +890,7 @@ function historyHTML(r){
         <span style="min-width:150px">${fmtTested(x)}</span>
         <span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span>
         <span class="gr ${x.grade}" style="min-width:18px">${x.grade||'—'}</span>
-        <span style="flex:1;min-width:80px">${x.technician||'—'}</span>
+        <span style="flex:1;min-width:80px">${escv(x.tech_disp)||'—'}</span>
         <span style="color:var(--bad);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.faults||''}</span>
       </div>
       <div class="hdet">${histDetailHTML(x)}</div>
