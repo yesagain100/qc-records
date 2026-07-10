@@ -269,7 +269,7 @@ function flat(r){const s=r.snapshot||{};
     lot_id:s.lot_id||"",po:s.po||"",supplier:s.supplier||"",sku:s.sku||"",part_number:s.part_number||"",
     cpu_speed:s.cpu_speed||"",cpu_cores:s.cpu_cores||"",gpu_cores:s.gpu_cores||"",
     kbd_layout:s.kbd_layout||"",kbd_language:s.kbd_language||"",photos:s.photo_count||0,
-    perf_score:r.perf_score||s.perf_score||"",notes:r.notes||s.notes||"",faults,_raw:r};}
+    perf_score:r.perf_score||s.perf_score||"",notes:r.notes||s.notes||"",client_uuid:r.client_uuid||s.client_uuid||"",faults,_raw:r};}
 const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"})+" "+x.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});}catch(e){return d||"—";}};
 // Region-based tested time: show each unit in ITS OWN local time. The app stamps a
 // station-local string (tested_local); if absent (older records), convert the UTC
@@ -792,7 +792,9 @@ function printLabel(){if(CURRENT)printLabels([CURRENT]);}
 // ---- Certificate of Quality (A4) — matches the app. Passed units only. ------
 const CERT_CATEGORIES=["Display","Camera","Light sensor","Keyboard","Trackpad","Touch ID","Wi-Fi",
   "Bluetooth","Speakers","Microphone","Ports & USB","Battery","Thermals","RAM","SSD","Performance","Charger","Cosmetics"];
-function certVerifyURL(r){return "https://yesagain100.github.io/qc-records/?verify="+encodeURIComponent(r.serial||"");}
+function certVerifyURL(r){var u="https://yesagain100.github.io/qc-records/?verify="+encodeURIComponent(r.serial||"");
+  if(r.client_uuid)u+="&t="+encodeURIComponent(r.client_uuid);  // pin the QR to THIS exact test
+  return u;}
 function certId(r){
   // Stable per-record ref: YC-<serial[:10]>-<yyMMdd-HHmm> from the record's test time.
   // Parse a real Date (tested_local is station wall-clock; tested_at is ISO) — the old
@@ -963,7 +965,7 @@ document.addEventListener("click",e=>{if(!e.target.closest("#bulkMenu")&&e.targe
 // Scanning the certificate QR opens ?verify=<serial>. That shows a read-only public
 // verification of the unit's QC result — NO login — so a buyer/reseller can confirm it.
 // Uses the same anon key the dashboard already reads audits with (client-side gate only).
-async function verifyView(serial){
+async function verifyView(serial,testId){
   document.getElementById("login").style.display="none";
   const ov=document.createElement("div");
   ov.id="verifyOverlay";
@@ -973,12 +975,28 @@ async function verifyView(serial){
   const B=document.getElementById("vBody");
   try{
     const q=encodeURIComponent(serial);
-    let rows=await (await fetch(`${SUPA}/rest/v1/audits?serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
-    if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
-      rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
-    }
-    if(!Array.isArray(rows)||!rows.length){
-      B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
+    let rows;
+    if(testId){
+      // EXACT-test path: the certificate carries this test's id (client_uuid). Resolve to
+      // THIS test only — so a re-tested serial can never show an older/contradicting result.
+      rows=await (await fetch(`${SUPA}/rest/v1/audits?client_uuid=eq.${encodeURIComponent(testId)}&limit=1`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      if(!Array.isArray(rows)||!rows.length){
+        // The test on this certificate hasn't reached the portal yet (offline queue / sync lag).
+        // Show a NEUTRAL pending state — NEVER an older result for the same serial.
+        B.innerHTML=`<div style="font-size:44px;line-height:1">⏳</div>
+          <h2 style="margin:6px 0 2px;font-size:22px;color:#c77700">Verification pending</h2>
+          <p style="color:#5b6b82;font-size:13px;margin:0 0 8px">This certificate's inspection hasn't finished syncing to the portal yet. Please re-scan in a few minutes.</p>
+          <p style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#8a97ad">Serial ${escv(serial||"—")}</p>`;return;
+      }
+    } else {
+      // Legacy serial-only QR (older certificates): show the latest test for the serial.
+      rows=await (await fetch(`${SUPA}/rest/v1/audits?serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
+        rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      }
+      if(!Array.isArray(rows)||!rows.length){
+        B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
+      }
     }
     const r=rows.map(flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
     const pass=r.result==="PASS";
@@ -1011,9 +1029,10 @@ function requireLogin(){if(sessionStorage.getItem("qcUser"))enter();
 document.getElementById("lbtn").onclick=doLogin;
 document.getElementById("lpin").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
 document.getElementById("logout").onclick=()=>{sessionStorage.removeItem("qcUser");location.reload();};
-// A certificate QR (?verify=<serial>) opens the PUBLIC verification — no login. Otherwise the gate.
-{const _v=new URLSearchParams(location.search).get("verify");
- if(_v)verifyView(_v.trim()); else requireLogin();}
+// A certificate QR (?verify=<serial>[&t=<test id>]) opens the PUBLIC verification — no login.
+// &t pins it to the EXACT test on that certificate; without it, latest-per-serial. Otherwise the gate.
+{const _sp=new URLSearchParams(location.search); const _v=_sp.get("verify"); const _t=(_sp.get("t")||"").trim();
+ if(_v)verifyView(_v.trim(), _t); else requireLogin();}
 </script>
 </body>
 </html>
