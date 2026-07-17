@@ -669,6 +669,28 @@ function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"
   let mods="";vals.forEach(v=>mods+=C128[v]);
   let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
   return `<svg width="100%" height="${h}" viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block">${rects}</svg>`;}
+// Code 39 ("Code 3 of 9") — used on the LABELS (matches the app). Each char = 9 elements
+// (idx 0,2,4,6,8 = bars, odd = spaces); "1" = wide. Wrapped in the * start/stop char.
+const CODE39={"0":"000110100","1":"100100001","2":"001100001","3":"101100000","4":"000110001",
+ "5":"100110000","6":"001110000","7":"000100101","8":"100100100","9":"001100100",
+ "A":"100001001","B":"001001001","C":"101001000","D":"000011001","E":"100011000",
+ "F":"001011000","G":"000001101","H":"100001100","I":"001001100","J":"000011100",
+ "K":"100000011","L":"001000011","M":"101000010","N":"000010011","O":"100010010",
+ "P":"001010010","Q":"000000111","R":"100000110","S":"001000110","T":"000010110",
+ "U":"110000001","V":"011000001","W":"111000000","X":"010010001","Y":"110010000",
+ "Z":"011010000","-":"010000101",".":"110000100"," ":"011000100","*":"010010100",
+ "$":"010101000","/":"010100010","+":"010001010","%":"000101010"};
+function code39svg(text,unit,h){
+  const up=String(text||"").toUpperCase().replace(/[^0-9A-Z\-. $\/+%]/g,"").replace(/\*/g,"");
+  const chars=("*"+up+"*").split(""); const wide=unit*2.5, gap=unit;
+  let x=0,rects="";
+  chars.forEach((ch,ci)=>{const pat=CODE39[ch];if(!pat)return;
+    for(let i=0;i<9;i++){const w=(pat[i]==="1"?wide:unit);if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
+    if(ci<chars.length-1)x+=gap;});
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block">${rects}</svg>`;}
+// LCD/screen faults for the Top label — filter the unit's fault list to display-related ones.
+function lcdFaultsOf(r){return (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean)
+  .filter(f=>/screen|lcd|display|pixel|backlight|polari|panel|shade|flicker|lines|touch\s*screen/i.test(f));}
 function lblEsc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 // Short chip token: Apple "M3 Pro"→"M3P", "M1 Max"→"M1M", "M2 Ultra"→"M2U", "M3"→"M3"; Intel "Core i5"→"i5".
 function chipAbbrev(chip){chip=String(chip||"");
@@ -703,13 +725,28 @@ function labelHTML(r){
     : `<div class="lftitle">RESULT</div><div class="lflist"><div class="lclean">✓ No faults<div class="sub">Clean pass — all checks OK</div></div></div>`;
   return `<div class="label">
     <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.tech_disp||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${r.grade||"—"}</span></div>
-    <div class="lsku"><b>SKU</b> ${lblEsc(r.sku||"—")}</div>
+    <div class="lsku"><span class="lskutag">SKU</span> ${lblEsc(r.sku||"—")}<span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
     <div class="lmodel">${model}</div>
     <div class="lbody">
       <div class="lleft"><div class="lchips">${chips.map(c=>`<div class="lchip"><div class="ck">${c[0]}</div><div class="cv">${lblEsc(c[1])}</div></div>`).join("")}</div></div>
       <div class="lright">${right}</div>
     </div>
-    <div class="lbcwrap"><div class="lbc">${code128svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
+    <div class="lbcwrap"><div class="lbc">${code39svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
+  </div>`;}
+// Top label (LCD) — the second label per unit (goes on the LCD assembly). LCD faults pulled
+// from the record, display grade, PO, and a Code 39 serial barcode. Mirrors the app's Top label.
+function topLabelHTML(r){
+  const lcd=lcdFaultsOf(r);
+  const yr=r.year&&!String(r.model||"").includes(String(r.year))?(" · "+r.year):"";
+  const model=lblEsc((r.model||"")+yr)||"&nbsp;";
+  const faultsBlk=lcd.length
+    ? `<div class="lftitle">LCD FAULTS (${lcd.length})</div><div class="lflist">${lcd.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
+    : `<div class="lftitle">LCD FAULTS</div><div class="lflist"><div class="lfl">—  No LCD faults recorded</div></div>`;
+  return `<div class="label toplabel">
+    <div class="lhead"><div class="lhl"><span class="res">LCD · TOP LABEL</span></div><span class="gr">LCD GRADE ${r.display_grade||"—"}</span></div>
+    <div class="lsku"><span class="lmodeltop">${model}</span><span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
+    <div class="lbody"><div class="lright" style="border-left:0;padding-left:0;flex:1">${faultsBlk}</div></div>
+    <div class="lbcwrap"><div class="lbc">${code39svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
   </div>`;}
 // DyMo + standard label presets. Each prints ONE label per unit (was spilling across many
 // because the page size didn't match the loaded label). Pick the label you've loaded.
@@ -729,40 +766,45 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
   // spill onto extra pages, so it's exactly one page per label on any browser.
   // Vertical safe inset for the printer's non-printable dead zone (~1.5mm top/bottom on DyMo
   // thermal heads). The label fills the media; padding keeps the barcode/serial off the dead edge.
+  // Typography per the label spec: NO bold anywhere (weight 400), titles/general 9px, faults 8px,
+  // margins removed to a minimal safe inset for the DyMo's ~1.5mm non-printable dead zone.
   const css=`@page{size:${sz.w}mm ${sz.h}mm;margin:0}
-    *{box-sizing:border-box}html,body{margin:0;padding:0}
-    .label{width:${sz.w}mm;height:${sz.h}mm;padding:1.6mm 2.4mm 2.2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
+    *{box-sizing:border-box;font-weight:400}html,body{margin:0;padding:0}
+    .label{width:${sz.w}mm;height:${sz.h}mm;padding:1mm 1.2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
     .label:last-child{page-break-after:auto}
-    .lhead{display:flex;align-items:center;justify-content:space-between;border-bottom:1.5pt solid #000;padding-bottom:.5mm;flex:0 0 auto;gap:2.5mm}
+    .lhead{display:flex;align-items:center;justify-content:space-between;border-bottom:1pt solid #000;padding-bottom:.4mm;flex:0 0 auto;gap:2.5mm}
     .lhl{display:flex;align-items:baseline;gap:2.5mm;min-width:0}
-    .lhead .res{font-size:14pt;font-weight:900;white-space:nowrap}
-    .lhead .ltech{font-size:7pt;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .lhead .gr{font-size:8.5pt;font-weight:800;border:1.2pt solid #000;border-radius:1.2mm;padding:.3mm 2.2mm;white-space:nowrap;flex:0 0 auto}
-    .lsku{font-family:ui-monospace,Menlo,monospace;font-size:6.5pt;font-weight:700;white-space:nowrap;overflow:hidden;margin-top:.7mm;flex:0 0 auto}
-    .lsku b{font-family:-apple-system,Arial,sans-serif;font-size:5pt;color:#777;font-weight:800;margin-right:1.5pt}
-    .lmodel{font-size:8pt;font-weight:800;white-space:nowrap;overflow:hidden;margin-top:.4mm;flex:0 0 auto}
-    .lbody{flex:1 1 auto;display:flex;gap:2.4mm;min-height:0;margin-top:.8mm}
+    .lhead .res{font-size:9px;white-space:nowrap}
+    .lhead .ltech{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lhead .gr{font-size:9px;border:1pt solid #000;border-radius:1.2mm;padding:.3mm 2mm;white-space:nowrap;flex:0 0 auto}
+    .lsku{font-family:ui-monospace,Menlo,monospace;font-size:9px;white-space:nowrap;overflow:hidden;margin-top:.6mm;flex:0 0 auto;display:flex;gap:3mm;align-items:baseline}
+    .lskutag{font-family:-apple-system,Arial,sans-serif;color:#777;margin-right:1.5pt}
+    .lpo{margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+    .lmodel,.lmodeltop{font-size:9px;white-space:nowrap;overflow:hidden;margin-top:.4mm;flex:0 0 auto}
+    .lmodeltop{min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .lbody{flex:1 1 auto;display:flex;gap:2.4mm;min-height:0;margin-top:.7mm}
     .lleft{flex:1.7;min-width:0;display:flex;flex-direction:column}
-    .lright{flex:1.08;min-width:0;border-left:1.2pt solid #000;padding-left:2mm;display:flex;flex-direction:column;overflow:hidden}
+    .lright{flex:1.08;min-width:0;border-left:1pt solid #000;padding-left:2mm;display:flex;flex-direction:column;overflow:hidden}
     .lchips{display:grid;grid-template-columns:repeat(3,1fr);gap:1mm}
     .lchip{border:.8pt solid #000;border-radius:1.1mm;padding:.6mm 0;text-align:center;overflow:hidden}
-    .lchip .ck{font-size:5pt;font-weight:800;color:#555}
-    .lchip .cv{font-size:9.5pt;font-weight:800;white-space:nowrap;display:inline-block;max-width:100%}
-    .lftitle{font-size:6pt;font-weight:800;color:#555;letter-spacing:.3pt;margin-bottom:.3mm;flex:0 0 auto}
+    .lchip .ck{font-size:7px;color:#555}
+    .lchip .cv{font-size:9px;white-space:nowrap;display:inline-block;max-width:100%}
+    .lftitle{font-size:8px;color:#555;letter-spacing:.3pt;margin-bottom:.3mm;flex:0 0 auto}
     .lflist{flex:1 1 auto;min-height:0;overflow:hidden}
-    .lfl{font-size:7pt;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .lclean{font-size:8.5pt;font-weight:800;margin-top:.2mm}
-    .lclean .sub{font-size:6.5pt;font-weight:600;color:#555;margin-top:.5mm}
-    .lbcwrap{flex:0 0 auto;margin-top:.7mm;border-top:.5pt solid #bbb;padding-top:.7mm}
+    .lfl{font-size:8px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lclean{font-size:9px;margin-top:.2mm}
+    .lclean .sub{font-size:8px;color:#555;margin-top:.5mm}
+    .lbcwrap{flex:0 0 auto;margin-top:.6mm;border-top:.5pt solid #bbb;padding-top:.6mm}
     .lbc{display:block;width:100%}
     .lbc svg{display:block;width:100%;height:12mm}
-    .lsn{text-align:center;font-family:ui-monospace,monospace;font-size:7.5pt;font-weight:700;letter-spacing:1pt;margin-top:.4mm}`;
+    .lsn{text-align:center;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:1pt;margin-top:.4mm}`;
   let f=document.getElementById("printFrame");if(f)f.remove();
   f=document.createElement("iframe");f.id="printFrame";f.setAttribute("aria-hidden","true");
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);
   const doc=f.contentWindow.document;
-  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.map(labelHTML).join("")}</body></html>`);doc.close();
+  // Two IDENTICAL labels per unit (one for the palmrest, one for the LCD assembly).
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.flatMap(r=>[labelHTML(r),labelHTML(r)]).join("")}</body></html>`);doc.close();
   setTimeout(()=>{try{
     // Auto-shrink ONLY a value that's genuinely too wide (e.g. "M1M 10C24G 3.2"). The value
     // is display:inline-block, so offsetWidth = the actual text width — short values (8GB, 89%)
