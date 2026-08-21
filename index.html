@@ -983,8 +983,9 @@ function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize()
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);
   const doc=f.contentWindow.document;
-  // Two IDENTICAL labels per unit (one for the palmrest, one for the LCD assembly).
-  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.flatMap(r=>[labelHTML(r),labelHTML(r)]).join("")}</body></html>`);doc.close();
+  // ONE label per unit. Copy count is the print station's setting — emitting a second
+  // copy here multiplies against it (station set to 1 printed 2, set to 2 printed 4).
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.map(r=>labelHTML(r)).join("")}</body></html>`);doc.close();
   setTimeout(()=>{try{
     // Auto-shrink ONLY a value that's genuinely too wide (e.g. "M1M 10C24G 3.2"). The value
     // is display:inline-block, so offsetWidth = the actual text width — short values (8GB, 89%)
