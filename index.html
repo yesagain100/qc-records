@@ -200,7 +200,7 @@
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
     <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
-    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><button id="printMktBtn" onclick="printMarketplaceProof()" title="Marketplace Test Proof (A4) — Refurbed-style functional checklist, latest test only, passed units only">🛒 Marketplace Proof</button><span class="x" onclick="closeModal()">×</span></div>
+    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><button id="printMktBtn" onclick="printMarketplaceProof()" title="Marketplace Test Proof (A4) — Refurbed-style functional checklist, latest test only, passed units only">🛒 Marketplace Proof</button><button id="printTestCertBtn" onclick="printTestCert()" title="Full component test certificate (A4) — every check with its result. Issued for any result.">🔧 Test certificate</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -208,6 +208,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="lotreport.js"></script>
 <script src="xlsx.js"></script>
+<script src="certificate.js"></script>
 <script>
 const SUPA="https://qulzvyhcpphntzuwyrnz.supabase.co";
 const KEY="sb_publishable_Cvk7Yshzceynd0jh9Znd6Q__Tearm51";
@@ -1374,6 +1375,89 @@ function printMarketplaceProof(r){
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);const doc=f.contentWindow.document;
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Proof — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${marketplaceProofHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+
+// ---- Full component test certificate (A4) ---------------------------------
+// Every check performed on the device with its real result — the breakdown customer
+// service shares per device. Unlike the Certificate of Quality this is issued for ANY
+// result: the component detail matters most when a unit failed.
+function testCertHTML(r){
+  const snap=(r._raw&&r._raw.snapshot)||r.snapshot||{};
+  const c=YCCertificate.certificateRows(snap);
+  const when=(r.tested_local||fmtTested(r)||"");
+  const STATE={pass:["PASS","#1d9e75"],fail:["FAIL","#c0392b"],
+               na:["N/A","#8a97ad"],untested:["NOT TESTED","#c47f17"],
+               unknown:["UNKNOWN","#8a97ad"]};
+  const kv=(k,v)=>v?`<div class="trow"><span class="tk">${lblEsc(k)}</span><span class="tv">${lblEsc(v)}</span></div>`:"";
+  const groups=c.groups.map(g=>`<div class="tgrp"><div class="tgh">${lblEsc(g.name)}</div>`
+    + g.items.map(i=>{const st=STATE[i.state]||STATE.unknown;
+        return `<div class="titem"><span>${lblEsc(i.label)}</span>`
+             + `<b style="color:${st[1]}">${st[0]}</b></div>`;}).join("")
+    + `</div>`).join("");
+  const auto=c.automated.length?`<table class="tauto"><thead><tr><th>Automated test</th><th>Executed</th><th>Engine verdict</th><th>Readings</th></tr></thead><tbody>`
+    + c.automated.map(a=>`<tr><td>${lblEsc(a.name)}</td>
+        <td style="font-weight:700;color:${a.ran?"#1d9e75":"#c0392b"}">${a.ran?"RUN — "+lblEsc(a.duration):"NOT RUN"}</td>
+        <td>${lblEsc(a.verdict||"—")}</td>
+        <td class="tband">${a.bands.map(b=>lblEsc((b.label||"")+" "+(b.value||"")+(b.unit||""))).join(" · ")||"—"}</td></tr>`).join("")
+    + `</tbody></table>`:"";
+  const missing=c.hasChecklist?"":`<div class="tnote">Per-item detail was not captured for this test — this record predates component-level reporting. The automated results below are the full extent of what was recorded.</div>`;
+  return `<div class="tcert">
+    <div class="chead"><img class="clogo" src="logo_orange.png" alt="YesAgain"><div class="ctitle">Component Test Certificate</div><div class="csub">Yes Check · full component-by-component inspection record</div></div>
+    <div class="crule"></div>
+    <div class="tsum">
+      <div><div class="tsl">DEVICE</div><div class="tsv">${lblEsc(r.model||"—")}</div><div class="tss">Serial ${lblEsc(r.serial||"—")}</div></div>
+      <div><div class="tsl">RESULT</div><div class="tsv" style="color:${r.result==="PASS"?"#1d9e75":"#c0392b"}">${lblEsc(r.result||"—")}</div><div class="tss">Overall grade ${lblEsc(r.grade||"—")}</div></div>
+      <div><div class="tsl">CHECKS</div><div class="tsv">${c.counts.pass}/${c.counts.total}</div><div class="tss">${c.counts.fail} failed · ${c.counts.na} N/A · ${c.counts.untested} not tested</div></div>
+    </div>
+    <div class="tmeta">
+      ${kv("Model ID",snap.model_identifier)}${kv("Chip",r.chip)}${kv("Memory",r.memory?r.memory+" GB":"")}
+      ${kv("Storage",r.storage?r.storage+" GB":"")}${kv("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
+      ${kv("Battery",r.batt_h!=null?Math.min(100,r.batt_h)+"%"+(r.batt_c!=null?" · "+r.batt_c+" cycles":""):"")}
+      ${kv("Tested",when)}${kv("Technician",r.tech_disp)}${kv("Warehouse",r.warehouse)}${kv("Group",r.department)}
+    </div>
+    ${missing}
+    <div class="tgrid">${groups}</div>
+    ${auto}
+    ${r.faults?`<div class="tfaults"><b>Faults recorded:</b> ${lblEsc(r.faults)}</div>`:""}
+    <div class="cfoot"><div class="cfl"><div><b>Reference</b>&nbsp; ${lblEsc(certId(r))}-T</div><div>Issued&nbsp; ${lblEsc(when)}</div></div>
+      <div class="cqr">${certQRSvg(certVerifyURL(r))}</div></div>
+    <div class="ccopy">© YesAgain Group · Yes Check QC. Records the device's condition and the checks performed at the time of inspection.</div>
+  </div>`;
+}
+function printTestCert(r){
+  r=r||CURRENT; if(!r)return;
+  const css=`@page{size:A4;margin:11mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
+    .tcert{width:100%;border:3px solid #112747;border-radius:6px;padding:18px 22px}
+    .chead{text-align:center}.clogo{height:36px;filter:brightness(0)}
+    .ctitle{font-size:20px;font-weight:800;margin-top:5px}.csub{font-size:10.5px;color:#5b6b82}
+    .crule{height:3px;background:#112747;margin:10px 0 12px}
+    .tsum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+    .tsl{font-size:8.5px;letter-spacing:.6px;color:#8a97ad;font-weight:700}
+    .tsv{font-size:16px;font-weight:800;line-height:1.2}.tss{font-size:9px;color:#5b6b82}
+    .tmeta{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 16px;margin-bottom:10px}
+    .trow{display:flex;justify-content:space-between;border-bottom:.5px solid #e6e9ef;padding:2px 0;font-size:10px}
+    .tk{color:#5b6b82}.tv{font-weight:600}
+    .tnote{background:#fff6e5;border:1px solid #f0d9a8;border-radius:5px;padding:7px 9px;font-size:9.5px;color:#7a5a1a;margin-bottom:10px}
+    .tgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 16px;margin-bottom:10px}
+    .tgrp{break-inside:avoid}
+    .tgh{font-size:9px;font-weight:800;letter-spacing:.6px;color:#8a97ad;border-bottom:1px solid #e6e9ef;padding-bottom:2px;margin-bottom:3px}
+    .titem{display:flex;justify-content:space-between;font-size:10px;padding:1.5px 0}
+    .titem b{font-size:9px}
+    .tauto{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:8px}
+    .tauto th{text-align:left;background:#f5f6f8;padding:3px 5px;font-size:8.5px;letter-spacing:.4px;color:#5b6b82}
+    .tauto td{padding:3px 5px;border-bottom:.5px solid #e6e9ef}
+    .tband{color:#5b6b82}
+    .tfaults{font-size:10px;color:#c0392b;margin-bottom:8px}
+    .cfoot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px}
+    .cfl{font-size:9.5px;color:#5b6b82;line-height:1.5}.cfl b{color:#112747}
+    .cqr svg{width:64px;height:64px}
+    .ccopy{text-align:center;font-size:8px;color:#8a97ad;margin-top:8px}`;
+  let f=document.getElementById("tcertFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="tcertFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Component test certificate</title><style>${css}</style></head><body>${testCertHTML(r)}</body></html>`);doc.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
 }
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
