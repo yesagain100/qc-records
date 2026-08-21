@@ -185,6 +185,7 @@
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
+      <select id="fDept"><option value="">All groups</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
@@ -342,7 +343,7 @@ const ALLCOLS=[
   {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
-const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","faults"];
+const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department","faults"];
 const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
 
 // ---- MOBILE (iPhone/iPad) mode — separate table, columns, and mapping ----------
@@ -503,17 +504,23 @@ function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(
   const sel=document.getElementById("fWh"),keep=sel.value;
   let opts='<option value="">All regions</option>'+["UAE","France","UK"].map(g=>`<option>${g}</option>`).join("");
   if(groups.has("Other"))opts+='<option>Other</option>';
-  sel.innerHTML=opts; sel.value=keep;}
+  sel.innerHTML=opts; sel.value=keep;
+  // Groups come from the data, not a fixed list: a site may add or rename one.
+  const dsel=document.getElementById("fDept"),dkeep=dsel.value;
+  const depts=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.department).filter(Boolean))].sort();
+  dsel.innerHTML='<option value="">All groups</option>'+depts.map(d=>`<option>${escv(d)}</option>`).join("");
+  dsel.value=dkeep;}
 function current(){
   const q=document.getElementById("q").value.toLowerCase().trim();
   const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
   const ft=document.getElementById("fTech").value,hide=document.getElementById("hideTest").checked;
-  const fw=document.getElementById("fWh").value;
+  const fw=document.getElementById("fWh").value,fd=document.getElementById("fDept").value;
   const df=document.getElementById("dFrom").value,dt=document.getElementById("dTo").value;
   let rows=RAW.filter(r=>{
     if(hide&&isTest(r._raw))return false;
     if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.tech_disp!==ft)return false;
     if(fw&&regionGroup(r)!==fw)return false;
+    if(fd&&(r.department||"")!==fd)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
     if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku,r.imei].join(" ").toLowerCase();if(!hay.includes(q))return false;}
@@ -1547,7 +1554,7 @@ document.getElementById("devMobile").onclick=()=>setMode("mobile");
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","fWh","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------

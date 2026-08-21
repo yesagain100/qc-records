@@ -164,3 +164,74 @@ test("a lot with no records at all shows the empty state, not a crash", () => {
   assert.doesNotThrow(() => vm.runInContext("renderLotReport();", c));
   assert.ok(c._host.innerHTML.includes("No lot numbers"));
 });
+
+// ---- records filters -------------------------------------------------------
+// Managers split records by warehouse AND by group; the group filter is the one
+// that was missing, and an empty selection must never hide anything.
+function filterContext(rows) {
+  const els = {};
+  const el = (id, value) => (els[id] = els[id] || { value: value || "", checked: false, innerHTML: "" });
+  ["q", "fResult", "fGrade", "fTech", "fWh", "fDept", "dFrom", "dTo"].forEach(id => el(id));
+  el("hideTest").checked = false;
+  el("uniqSerial").checked = false;
+  const c = {
+    document: { getElementById: id => el(id) },
+    RAW: rows, isTest: () => false, regionGroup: r => r.warehouse || "",
+    escv: v => String(v == null ? "" : v), console, _el: el
+  };
+  vm.createContext(c);
+  vm.runInContext("var sortK='tested_at', sortDir=-1;", c);
+  vm.runInContext(extractFn(html, "current"), c);
+  vm.runInContext(extractFn(html, "fillTechs"), c);
+  return c;
+}
+
+const RECS = [
+  { id: 1, serial: "A", result: "PASS", grade: "A", tech_disp: "Ann", warehouse: "UAE",
+    department: "goods_in", tested_at: "2026-08-01T10:00:00Z", _raw: {} },
+  { id: 2, serial: "B", result: "PASS", grade: "A", tech_disp: "Bob", warehouse: "UAE",
+    department: "qc", tested_at: "2026-08-02T10:00:00Z", _raw: {} },
+  { id: 3, serial: "C", result: "FAIL", grade: "D", tech_disp: "Bob", warehouse: "France",
+    department: "qc", tested_at: "2026-08-03T10:00:00Z", _raw: {} }
+];
+
+test("no group selected shows every record", () => {
+  const c = filterContext(RECS);
+  assert.equal(c.current().length, 3);
+});
+
+test("selecting a group narrows to it", () => {
+  const c = filterContext(RECS);
+  c._el("fDept").value = "qc";
+  assert.deepEqual(c.current().map(r => r.serial).sort(), ["B", "C"]);
+});
+
+test("the group filter composes with the warehouse filter", () => {
+  const c = filterContext(RECS);
+  c._el("fDept").value = "qc";
+  c._el("fWh").value = "UAE";
+  assert.deepEqual(c.current().map(r => r.serial), ["B"]);
+});
+
+test("a record with no group is excluded when a group is selected", () => {
+  const c = filterContext(RECS.concat([{ id: 4, serial: "D", result: "PASS", grade: "A",
+    warehouse: "UAE", department: "", tested_at: "2026-08-04T10:00:00Z", _raw: {} }]));
+  c._el("fDept").value = "qc";
+  assert.deepEqual(c.current().map(r => r.serial).sort(), ["B", "C"]);
+});
+
+test("the group dropdown is built from the data, not a fixed list", () => {
+  const c = filterContext(RECS);
+  c.fillTechs();
+  const html_ = c._el("fDept").innerHTML;
+  assert.ok(html_.includes("goods_in"));
+  assert.ok(html_.includes("qc"));
+  assert.ok(html_.includes("All groups"));
+});
+
+test("the group dropdown keeps the current selection across a refresh", () => {
+  const c = filterContext(RECS);
+  c._el("fDept").value = "qc";
+  c.fillTechs();
+  assert.equal(c._el("fDept").value, "qc");
+});
