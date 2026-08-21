@@ -124,6 +124,8 @@
   th{font-weight:700}
   .bar .lab{font-weight:500}
   /* --- lot report + supplier/lot/model analysis --- */
+  tr.untested td{opacity:.62}
+  tr.untested td:first-child{border-left:3px solid var(--line)}
   .lotbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(17,39,71,.05)}
   .lotbar select{padding:10px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:230px;background:#fff;font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace;color:var(--navy)}
   .chip{font-size:11px;font-weight:600;padding:4px 11px;border-radius:20px;background:#eef2f8;color:var(--navy);white-space:nowrap}
@@ -204,10 +206,24 @@
 <div id="labelArea"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="lotreport.js"></script>
+<script src="xlsx.js"></script>
 <script>
 const SUPA="https://qulzvyhcpphntzuwyrnz.supabase.co";
 const KEY="sb_publishable_Cvk7Yshzceynd0jh9Znd6Q__Tearm51";
 let RAW=[],ROWS=[],sortK="tested_at",sortDir=-1,CURRENT=null;
+// Serials the supplier declared per lot, with the grade/specs they claimed. A lot is the
+// union of these and the units actually tested, so a declared serial that never arrived
+// still shows as NOT TESTED instead of vanishing from the report.
+let LOT_SERIALS=[];
+async function loadLotSerials(){
+  try{
+    const r=await fetch(`${SUPA}/rest/v1/lot_serials?select=*&limit=20000`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(r.ok){LOT_SERIALS=await r.json();
+      if(document.getElementById("lotTab").style.display!=="none")renderLotReport();}
+  }catch(e){/* table may predate the migration — the lot report still works, minus claims */}
+}
 const TEST_MARKERS=["PUBKEY","VERIFY","E2E","DEMO","SAMPLE","TEST-"];
 const isTest=r=>{const s=(r.serial||"").toUpperCase(),t=(r.technician||"").toLowerCase();
   return TEST_MARKERS.some(m=>s.includes(m))||["verify","test","demo","e2e bot",""].includes(t);};
@@ -471,6 +487,7 @@ async function load(){
     if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
     LOADING=false;
     RAW=all.map(wantMode==="mobile"?flatMobile:flat);fillTechs();render();
+    loadLotSerials();
   }catch(e){
     if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
     LOADING=false;
@@ -595,32 +612,42 @@ function latestPerSerial(rows){const m=new Map();
     if(!e||(r.tested_at||"")>(e.tested_at||""))m.set(k,r);}
   return [...m.values()];}
 function lotBase(){return latestPerSerial(RAW.filter(r=>!isTest(r._raw)));}
-let LOT_SEL="",LOTDEF=[];
+let LOT_SEL="";
 function lotUnits(){return lotBase().filter(r=>r.lot_id===LOT_SEL);}
 function dchip(d){return d?fmtDate(d).split(" ").slice(0,3).join(" "):"—";}
+function lotAllRows(){
+  return YCLotReport.lotRows({units:lotBase(), supplierRows:LOT_SERIALS,
+    audits:RAW.filter(r=>!isTest(r._raw)), lotId:LOT_SEL, goodsInGroups:GOODS_IN_GROUPS});
+}
+// Department ids that count as Goods In. Kept as a list because a site may name the group
+// differently; a blank Goods In column is correct until the group is really recorded.
+const GOODS_IN_GROUPS=["goods_in","goods in","goodsin"];
+let LOTROWS=[];
 function renderLotReport(){
   const host=document.getElementById("lotTab"),base=lotBase();
-  const lots=[...new Set(base.map(r=>r.lot_id).filter(Boolean))].sort();
+  const lots=[...new Set(base.map(r=>r.lot_id).filter(Boolean).concat(
+      LOT_SERIALS.map(r=>r.lot_id).filter(Boolean)))].sort();
   if(!lots.length){host.innerHTML=`<div class="empty">No lot numbers on the records yet.<br>Record a <b>lot / PO / supplier</b> at intake and every batch will appear here — with its defect rate, faults, and a unit-by-unit sheet you can hand to your quality team or send to the supplier.</div>`;return;}
   if(!LOT_SEL||!lots.includes(LOT_SEL))LOT_SEL=lots[0];
   const u=base.filter(r=>r.lot_id===LOT_SEL);
-  const sup=[...new Set(u.map(r=>r.supplier).filter(Boolean))].join(", ")||"—";
-  const po=[...new Set(u.map(r=>r.po).filter(Boolean))].join(", ")||"—";
-  const dts=u.map(r=>r.tested_at).filter(Boolean).sort();
-  const total=u.length,pass=u.filter(r=>r.result==="PASS").length,fail=u.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
-  const defects=u.filter(isDefective).sort((a,b)=>(a.model||"").localeCompare(b.model||"")||(a.serial||"").localeCompare(b.serial||""));
-  LOTDEF=defects;
-  const rate=total?Math.round(defects.length/total*100):0;
-  const ft={};defects.forEach(r=>splitFaults(r).forEach(f=>ft[f]=(ft[f]||0)+1));
-  const models=[...new Set(u.map(r=>r.model).filter(Boolean))];
-  const drows=defects.map((r,i)=>`<tr onclick="openRowObj(LOTDEF[${i}])" style="cursor:pointer">
-      <td class="mono">${r.serial||"—"}</td><td>${r.model||"—"}${r.year?` <span class="muted">${r.year}</span>`:""}</td>
-      <td class="mono">${r.sku||""}</td><td class="gr ${r.grade}">${r.grade||"—"}</td>
-      <td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>
-      <td>${r.batt_h!=null?Math.min(100,r.batt_h)+"%":"—"}</td>
-      <td style="white-space:normal;color:var(--bad);font-size:12px">${r.faults||""}</td>
-      <td class="muted">${escv(r.tech_disp)}</td><td class="muted" style="white-space:nowrap">${fmtDate(r.tested_at)}</td></tr>`).join("")
-    ||`<tr><td colspan="9" class="empty">No defects in this lot — every unit passed clean. 🎉</td></tr>`;
+  const rows=lotAllRows(); LOTROWS=rows;
+  const sum=YCLotReport.lotSummary(rows);
+  const sup=[...new Set(rows.map(r=>r.supplier).filter(Boolean))].join(", ")||"—";
+  const po=[...new Set(rows.map(r=>r.po).filter(Boolean))].join(", ")||"—";
+  const dts=rows.map(r=>r.testedAt).filter(Boolean).sort();
+  const ft={};Object.keys(sum.faults).forEach(k=>ft[k]=sum.faults[k]);
+  const models=[...new Set(rows.map(r=>r.model).filter(Boolean))];
+  const gcell=g=>g?`<td class="gr ${g}">${g}</td>`:`<td class="muted">—</td>`;
+  const trows=rows.map((r,i)=>`<tr ${r.tested?`onclick="openRowObj(LOTROWS[${i}]._raw)" style="cursor:pointer"`:'class="untested"'}>
+      <td class="mono">${escv(r.serial)}</td><td>${escv(r.model)||"—"}</td>
+      ${gcell(r.supplierGrade)}${gcell(r.goodsInGrade)}${gcell(r.screenGrade)}${gcell(r.overallGrade)}
+      <td><span class="pill ${r.tested?(r.result||'OTHER'):'OTHER'}">${escv(r.result)||"—"}</span></td>
+      <td>${r.battery!=null?Math.min(100,r.battery)+"%":"—"}</td>
+      <td class="muted" style="font-size:11.5px">${escv(r.gradeMatch)}</td>
+      <td style="white-space:normal;color:var(--bad);font-size:12px">${escv(r.faults)}</td>
+      <td class="muted">${escv(r.technician)}</td>
+      <td class="muted" style="white-space:nowrap">${r.testedAt?fmtDate(r.testedAt):"—"}</td></tr>`).join("")
+    ||`<tr><td colspan="12" class="empty">No units in this lot yet.</td></tr>`;
   host.innerHTML=`
     <div class="lotbar">
       <label style="font-weight:700;color:var(--navy)">📦 Lot</label>
@@ -628,34 +655,36 @@ function renderLotReport(){
       <span class="chip">Supplier: ${sup}</span><span class="chip">PO: ${po}</span><span class="chip">${dchip(dts[0])} → ${dchip(dts[dts.length-1])}</span>
       <div style="flex:1"></div>
       <div class="btnrow">
-        <button class="btn orange" onclick="lotCSV()">⤓ Export defects (Excel)</button>
+        <button class="btn orange" onclick="lotExport()">⤓ Export full lot (Excel)</button>
         <button class="btn" onclick="printLotReport()">🖨 Print / PDF report</button>
       </div>
     </div>
     <div class="lr-stats">
-      <div class="lr-stat"><div class="n">${total}</div><div class="l">units in lot</div></div>
-      <div class="lr-stat ok"><div class="n">${pass}</div><div class="l">passed</div></div>
-      <div class="lr-stat bad"><div class="n">${fail}</div><div class="l">fail / reject</div></div>
-      <div class="lr-stat ${rate>=20?'bad':''}"><div class="n">${rate}%</div><div class="l">defect rate</div></div>
-      <div class="lr-stat"><div class="n">${defects.length}</div><div class="l">defective units</div></div>
+      <div class="lr-stat"><div class="n">${sum.total}</div><div class="l">units in lot</div></div>
+      <div class="lr-stat"><div class="n">${sum.tested}</div><div class="l">tested</div></div>
+      <div class="lr-stat ${sum.notTested?'':''}"><div class="n">${sum.notTested}</div><div class="l">not tested</div></div>
+      <div class="lr-stat bad"><div class="n">${sum.defective}</div><div class="l">fail / reject</div></div>
+      <div class="lr-stat ${sum.defectRate>=20?'bad':''}"><div class="n">${sum.defectRate}%</div><div class="l">defect rate (of tested)</div></div>
       <div class="lr-stat"><div class="n">${Object.keys(ft).length}</div><div class="l">distinct faults</div></div>
     </div>
     <div class="grid2" style="margin-bottom:16px">
       <div class="chart"><h3>Faults in this lot</h3>${bars(ft,'var(--bad)',12)}</div>
-      <div class="chart"><h3>Models in this lot</h3>${bars(Object.fromEntries(models.map(m=>[m,u.filter(r=>r.model===m).length])),'var(--navy2)',12)}</div>
+      <div class="chart"><h3>Models in this lot</h3>${bars(Object.fromEntries(models.map(m=>[m,rows.filter(r=>r.model===m).length])),'var(--navy2)',12)}</div>
     </div>
     <div class="report">
-      <div class="rhd"><div class="t">Defective units — Lot ${LOT_SEL}</div><div class="s">Supplier ${sup} · PO ${po} · ${defects.length} of ${total} units defective · ${rate}% defect rate · click any row for the full unit report</div></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>Serial</th><th>Model</th><th>SKU</th><th>Grade</th><th>Result</th><th>Batt</th><th>Faults reported</th><th>Tech</th><th>Tested</th></tr></thead><tbody>${drows}</tbody></table></div>
+      <div class="rhd"><div class="t">All units — Lot ${escv(LOT_SEL)}</div><div class="s">Supplier ${sup} · PO ${po} · ${sum.total} units (${sum.tested} tested, ${sum.notTested} not tested) · ${sum.defective} defective · ${sum.defectRate}% of tested · click a tested row for the full unit report</div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Serial</th><th>Model</th><th>Supplier</th><th>Goods In</th><th>Screen</th><th>Overall</th><th>Result</th><th>Batt</th><th>Grade check</th><th>Faults reported</th><th>Tech</th><th>Tested</th></tr></thead><tbody>${trows}</tbody></table></div>
     </div>`;
   document.getElementById("lotPick").onchange=e=>{LOT_SEL=e.target.value;renderLotReport();};
 }
-function lotCSV(){const u=lotUnits().filter(isDefective);
-  const cols=[["Date",r=>fmtTested(r)],["Serial",r=>r.serial],["Model",r=>r.model],["Year",r=>r.year],["SKU",r=>r.sku],["Grade",r=>r.grade],["LCD grade",r=>r.display_grade],["Body grade",r=>r.body_grade],["Result",r=>r.result],["Battery %",r=>r.batt_h!=null?Math.min(100,r.batt_h):""],["Cycles",r=>r.batt_c],["Faults",r=>r.faults],["Technician",r=>r.tech_disp],["Warehouse",r=>r.warehouse],["Supplier",r=>r.supplier],["PO",r=>r.po],["Lot",r=>r.lot_id]];
-  const esc=v=>{v=(v==null?"":String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  const lines=[cols.map(c=>esc(c[0])).join(",")].concat(u.map(r=>cols.map(c=>esc(c[1](r))).join(",")));
-  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);a.download=`YesAgain Lot ${LOT_SEL} defects ${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+// Two tabs: every unit with full detail, and the lot's report summary.
+function lotExport(){
+  const rows=lotAllRows();
+  YCXlsx.downloadXlsx([
+    {name:"Details", rows:YCLotReport.lotDetailSheet(rows, LOT_SEL, fmtDate)},
+    {name:"Summary", rows:YCLotReport.lotSummarySheet(rows, LOT_SEL, new Date().toLocaleString())}],
+    `YesAgain Lot ${LOT_SEL} — full report ${new Date().toISOString().slice(0,10)}.xlsx`);
+}
 function printLotReport(){const u=lotUnits(),defects=u.filter(isDefective);
   const sup=[...new Set(u.map(r=>r.supplier).filter(Boolean))].join(", ")||"—";
   const po=[...new Set(u.map(r=>r.po).filter(Boolean))].join(", ")||"—";
