@@ -365,9 +365,19 @@ function renderColMgr(){const m=document.getElementById("colMgr");
 async function load(){
   document.getElementById("err").style.display="none";
   try{
-    const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=10000`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-    if(!res.ok)throw new Error("HTTP "+res.status);
-    RAW=(await res.json()).map(flat);fillTechs();render();
+    // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
+    // through with limit/offset until a short page signals the end. Works at any table size.
+    const PAGE=1000; let all=[], offset=0;
+    for(;;){
+      const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=${PAGE}&offset=${offset}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      if(!res.ok)throw new Error("HTTP "+res.status);
+      const batch=await res.json();
+      all=all.concat(batch);
+      if(batch.length<PAGE) break;          // last (short) page → done
+      offset+=PAGE;
+      if(offset>5000000) break;             // hard safety stop
+    }
+    RAW=all.map(flat);fillTechs();render();
   }catch(e){const el=document.getElementById("err");el.style.display="block";
     el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
