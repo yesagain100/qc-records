@@ -235,3 +235,44 @@ test("the group dropdown keeps the current selection across a refresh", () => {
   c.fillTechs();
   assert.equal(c._el("fDept").value, "qc");
 });
+
+// ---- certificate verify link ----------------------------------------------
+// The QR outlives any move of the portal, so it must point back at wherever the
+// page is actually served from — not at a host baked in when it was written.
+function verifyContext(loc) {
+  const c = { location: loc, console };
+  vm.createContext(c);
+  ["portalBase", "certVerifyURL"].forEach(f => vm.runInContext(extractFn(html, f), c));
+  return c;
+}
+
+test("the verify link is built from the page's own origin", () => {
+  const c = verifyContext({ protocol: "https:", origin: "https://qc.example.com",
+                            pathname: "/records/index.html" });
+  assert.equal(c.certVerifyURL({ serial: "C02ABC" }),
+    "https://qc.example.com/records/?verify=C02ABC");
+});
+
+test("a directory URL with no filename still resolves", () => {
+  const c = verifyContext({ protocol: "https:", origin: "https://qc.example.com",
+                            pathname: "/records/" });
+  assert.equal(c.certVerifyURL({ serial: "C02ABC" }),
+    "https://qc.example.com/records/?verify=C02ABC");
+});
+
+test("a site served at the root works", () => {
+  const c = verifyContext({ protocol: "https:", origin: "https://qc.example.com",
+                            pathname: "/" });
+  assert.equal(c.certVerifyURL({ serial: "C02ABC" }), "https://qc.example.com/?verify=C02ABC");
+});
+
+test("opened from disk it falls back to the published host", () => {
+  const c = verifyContext({ protocol: "file:", origin: "null", pathname: "/Users/x/index.html" });
+  assert.ok(c.certVerifyURL({ serial: "C02ABC" }).startsWith("https://yesagain100.github.io/"));
+});
+
+test("the QR is pinned to one exact test when there is a test id", () => {
+  const c = verifyContext({ protocol: "https:", origin: "https://qc.example.com", pathname: "/r/" });
+  assert.equal(c.certVerifyURL({ serial: "C02ABC", client_uuid: "abc123" }),
+    "https://qc.example.com/r/?verify=C02ABC&t=abc123");
+});

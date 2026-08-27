@@ -1301,7 +1301,17 @@ function printLabel(){if(CURRENT)printLabels([CURRENT]);}
 // ---- Certificate of Quality (A4) — matches the app. Passed units only. ------
 const CERT_CATEGORIES=["Display","Camera","Light sensor","Keyboard","Trackpad","Touch ID","Wi-Fi",
   "Bluetooth","Speakers","Microphone","Ports & USB","Battery","Thermals","RAM","SSD","Performance","Charger","Cosmetics"];
-function certVerifyURL(r){var u="https://yesagain100.github.io/qc-records/?verify="+encodeURIComponent(r.serial||"");
+// Where THIS page is served from, not a hardcoded host: the QR is printed on a
+// certificate that outlives any move of the portal, so it has to resolve back here.
+// file:// (opened locally) has no usable origin, so fall back to the published host.
+function portalBase(){
+  try{
+    if(location.protocol==="http:"||location.protocol==="https:")
+      return location.origin+location.pathname.replace(/[^\/]*$/,"");
+  }catch(e){}
+  return "https://yesagain100.github.io/qc-records/";
+}
+function certVerifyURL(r){var u=portalBase()+"?verify="+encodeURIComponent(r.serial||"");
   if(r.client_uuid)u+="&t="+encodeURIComponent(r.client_uuid);  // pin the QR to THIS exact test
   return u;}
 function certId(r){
