@@ -1,0 +1,1629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YesAgain — QC Records</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#112747;--navy2:#1c3a5e;--orange:#fbb03b;--ink:#1b2430;--muted:#64748b;
+    --ok:#1e9e57;--bad:#cf3b3b;--watch:#c8881b;--blue:#3b82c4;--line:#e3e8f0;--bg:#f4f6fa;--panel:#fff;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;letter-spacing:-.1px}
+  header{background:var(--navy);color:#fff;padding:14px 26px;border-bottom:4px solid var(--orange);
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  header .logo{font-size:22px;font-weight:800}header .logo span{color:var(--orange)}
+  header h1{font-size:14px;font-weight:500;color:#b9c6dc;margin:0}header .sp{flex:1}
+  header button{background:var(--orange);color:var(--navy);border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:13px}
+  header button.ghost{background:transparent;color:#cdd8ea;border:1px solid #34527a}
+  .lookup{background:var(--navy2);padding:12px 26px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:56px;z-index:19}
+  .lookup input{flex:1;min-width:260px;max-width:520px;padding:11px 14px;border:0;border-radius:9px;font-size:15px;font-family:ui-monospace,Menlo,monospace}
+  .lookup label{color:#cdd8ea;font-weight:700;font-size:13px}
+  .lookup button{background:#fff;color:var(--navy);border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .tabs{display:flex;gap:8px;padding:14px 26px 0;max-width:1500px;margin:0 auto}
+  .tab{padding:9px 18px;border-radius:9px 9px 0 0;background:#e7ecf3;color:var(--navy);font-weight:700;cursor:pointer;border:1px solid var(--line);border-bottom:0}
+  .tab.on{background:var(--panel);color:var(--orange)}
+  .wrap{max-width:100%;margin:0;padding:10px 14px 40px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .n{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}.stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .controls input,.controls select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff}
+  .controls input[type=search]{min-width:240px;flex:1}
+  #colsBtn{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
+  #colMgr{display:none;position:absolute;right:0;top:42px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:10px;max-height:62vh;overflow:auto;width:230px}
+  #colMgr.show{display:block}
+  #colMgr .hd{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+  #colMgr .ci{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:6px;cursor:grab;font-size:13px;border-top:2px solid transparent}
+  #colMgr .ci:hover{background:#f4f6fa}#colMgr .ci.dragover{border-top:2px solid var(--orange)}
+  #colMgr .gw{cursor:grab;color:var(--muted)}
+  #bulkBtn{background:#fff;color:var(--navy);border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
+  #bulkMenu{display:none;position:absolute;right:0;top:46px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;width:240px}
+  #bulkMenu.show{display:block}
+  #bulkMenu .bm-hd{font-size:11px;color:var(--muted);padding:6px 8px}
+  #bulkMenu .bm-i{padding:9px 10px;border-radius:7px;cursor:pointer;font-size:14px;color:var(--navy)}
+  #bulkMenu .bm-i:hover{background:#f4f6fa}
+  .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block;letter-spacing:.3px}
+  .pill.PASS{background:#e4f6ec;color:var(--ok)}.pill.FAIL,.pill.REJECT{background:#fae3e3;color:var(--bad)}
+  .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
+  .gr{font-weight:800}.gr.A{color:#1e9e57}.gr.B{color:#3b82c4}.gr.C{color:#c8881b}.gr.D{color:#cf3b3b}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #tbl{table-layout:fixed}
+  #recordsTab{overflow-x:auto}
+  #thead th{user-select:none}
+  .rsz{position:absolute;right:0;top:0;width:7px;height:100%;cursor:col-resize;z-index:2}
+  .rsz:hover{background:var(--orange)}
+  th{background:#f0f3f8;color:var(--navy);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;user-select:none}
+  tbody tr{cursor:pointer}tbody tr:hover{background:#f7faff}
+  .prbtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:var(--navy);vertical-align:middle;padding:0}
+  .prbtn:hover{background:var(--orange);border-color:var(--orange);color:var(--navy)}
+  .prbtn svg{display:block}
+  .hrow{border-top:1px solid var(--line)}
+  .hsum{display:flex;align-items:center;gap:10px;padding:7px 6px;cursor:pointer;font-size:13px}
+  .hsum:hover{background:#f7faff}
+  .hcar{color:var(--muted);transition:transform .15s;display:inline-block}
+  .hrow.open>.hsum .hcar{transform:rotate(90deg)}
+  .hdet{display:none;padding:4px 6px 12px 26px;background:#fafcff}
+  .hrow.open>.hdet{display:block}
+  td.faults{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--bad);font-size:12px}
+  td.mono{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+  .muted{color:var(--muted)}.empty{padding:40px;text-align:center;color:var(--muted)}
+  /* analysis */
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .chart h3{margin:0 0 12px;font-size:13px;color:var(--navy);text-transform:uppercase;letter-spacing:.4px}
+  .bar{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
+  .bar .lab{width:150px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .track{flex:1;background:#eef2f8;border-radius:6px;height:18px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:6px;background:var(--navy)}
+  .bar .v{width:54px;flex:none;text-align:right;font-weight:700;color:var(--navy)}
+  .days{display:flex;align-items:flex-end;gap:3px;height:90px}
+  .days .d{flex:1;background:var(--orange);border-radius:3px 3px 0 0;min-height:2px}
+  .days .dl{display:flex;gap:3px;font-size:9px;color:var(--muted);margin-top:4px}
+  .modal{position:fixed;inset:0;background:rgba(10,20,40,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px;overflow:auto}
+  .modal.show{display:flex}
+  .card{background:#fff;border-radius:14px;max-width:780px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .card .top{background:var(--navy);color:#fff;padding:16px 22px;border-radius:14px 14px 0 0;display:flex;align-items:center;gap:12px}
+  .card .top .x{margin-left:auto;cursor:pointer;font-size:22px;color:#cdd8ea}
+  .card .top button{background:var(--orange);color:var(--navy);border:0;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer}
+  .card .body{padding:18px 22px}
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:6px 14px;font-size:13px}.kv dt{color:var(--muted)}.kv dd{margin:0;font-weight:600}
+  .sec{font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
+  .err{background:#fae3e3;color:var(--bad);padding:12px 16px;border-radius:8px;margin-bottom:14px;font-size:13px;display:none}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
+  /* label print */
+  #labelArea{position:absolute;left:-9999px;top:0}
+  .label{width:88mm;padding:1.5mm 2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+  .label .lh{display:flex;align-items:center;gap:6px;border-bottom:1.5px solid #000;padding-bottom:2px;margin-bottom:2px}
+  .label .lh .res{font-size:12pt;font-weight:900}.label .lh .gr{font-size:8.5pt;font-weight:800;border:1.5px solid #000;border-radius:4px;padding:0 5px;margin-left:auto}
+  .label .lm{font-size:7.5pt;font-weight:700}.label .ls{font-family:ui-monospace,Menlo,monospace;font-size:10.5pt;font-weight:700;letter-spacing:.5pt}
+  .label .lg{font-size:6.5pt;line-height:1.3;margin-top:1px}.label .lf{font-size:7pt;font-weight:800;line-height:1.3;margin-top:2px;white-space:normal}
+  .label .lbc{margin-top:auto;text-align:center;padding:0 5mm}.label .lbc svg{width:100%;height:58px;display:block}.label .lbc .sn{font-family:ui-monospace,Menlo,monospace;font-size:9pt;margin-top:1px}
+  @media print{ body>*{display:none!important} #labelArea{display:block!important;position:static}
+    #labelArea .label{page-break-after:always;border:0} #labelArea .label:last-child{page-break-after:auto} @page{margin:1.5mm} }
+  #login{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:100}
+  #login .box{background:#fff;border-radius:16px;padding:30px 32px;width:330px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  #login .lg{font-size:26px;font-weight:800;color:var(--navy)}#login .lg span{color:var(--orange)}
+  #login h2{font-size:16px;margin:6px 0 2px;color:var(--navy)}#login .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  #login select,#login input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;margin:6px 0;font-size:15px}
+  #login button{width:100%;background:var(--orange);color:var(--navy);border:0;border-radius:10px;padding:13px;font-weight:800;cursor:pointer;margin-top:10px}
+  #login .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
+  #who{color:#cdd8ea;font-size:13px}
+  /* --- 2026 refresh: tidier surfaces + fonts --- */
+  .mono,td.mono,.lookup input,.label .ls,.label .lbc .sn{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace}
+  header .logo{letter-spacing:-.6px;font-weight:800}
+  .stat,.chart{box-shadow:0 1px 2px rgba(17,39,71,.05)}
+  .stat{border-radius:14px}.stat .n{font-weight:700}
+  .tabs{gap:6px}
+  .tab{background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);padding:10px 14px;font-weight:600;transition:color .12s,border-color .12s}
+  .tab:hover{color:var(--navy)}
+  .tab.on{background:transparent;color:var(--navy);border-bottom:2px solid var(--orange)}
+  .chart h3{font-size:12px;font-weight:700}
+  th{font-weight:700}
+  .bar .lab{font-weight:500}
+  /* --- lot report + supplier/lot/model analysis --- */
+  tr.untested td{opacity:.62}
+  tr.untested td:first-child{border-left:3px solid var(--line)}
+  .lotbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(17,39,71,.05)}
+  .lotbar select{padding:10px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:230px;background:#fff;font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace;color:var(--navy)}
+  .chip{font-size:11px;font-weight:600;padding:4px 11px;border-radius:20px;background:#eef2f8;color:var(--navy);white-space:nowrap}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{background:var(--navy);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:13px}
+  .btn:hover{filter:brightness(1.12)}
+  .btn.orange{background:var(--orange);color:var(--navy);font-weight:700}
+  .lr-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin:0 0 16px}
+  .lr-stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 1px 2px rgba(17,39,71,.05)}
+  .lr-stat .n{font-size:23px;font-weight:700;color:var(--navy);line-height:1.05}.lr-stat .l{font-size:11px;color:var(--muted);margin-top:3px}
+  .lr-stat.bad .n{color:var(--bad)}.lr-stat.ok .n{color:var(--ok)}
+  .report{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(17,39,71,.05)}
+  .report .rhd{background:var(--navy);color:#fff;padding:14px 18px;border-bottom:3px solid var(--orange)}
+  .report .rhd .t{font-size:16px;font-weight:700}.report .rhd .s{font-size:12px;color:#b9c6dc;margin-top:2px}
+  .report table{border:0;border-radius:0}
+  .matrix{width:100%;border-collapse:collapse;font-size:12px;min-width:520px}
+  .matrix th,.matrix td{border:1px solid var(--line);padding:6px 9px;text-align:center}
+  .matrix th{background:#f0f3f8;color:var(--navy);font-size:10px}
+  .matrix th:first-child,.matrix td:first-child{text-align:left;font-weight:600;white-space:nowrap}
+  .matrix td.warm{background:#fdf0db}.matrix td.hot{background:#fae3e3;color:var(--bad);font-weight:800}
+</style>
+<style id="pageStyle"></style>
+</head>
+<body>
+<div id="login"><div class="box">
+  <img src="logo_orange.png" alt="YesAgain" style="height:34px"><h2>QC Records</h2>
+  <div class="sub">Sign in with your Yes Check account</div>
+  <select id="luser"><option>Loading accounts…</option></select>
+  <input id="lpin" type="password" placeholder="PIN" autocomplete="off">
+  <button id="lbtn">Sign in</button>
+  <div class="err" id="lerr"></div>
+</div></div>
+<header>
+  <img src="logo_white.png" alt="YesAgain" style="height:24px;vertical-align:middle"><h1>Quality-Control Records</h1>
+  <div class="sp"></div>
+  <span id="who"></span>
+  <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ Export to Excel (full)</button>
+  <button class="ghost" id="logout">Sign out</button>
+</header>
+<div class="lookup">
+  <label>🔎 Scan / search:</label>
+  <input id="q" placeholder="Scan the device serial (handheld) or type — the table auto-filters to matches" autocomplete="off">
+  <div style="position:relative"><button id="bulkBtn">☰ Bulk actions</button><div id="bulkMenu"></div></div>
+</div>
+<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div><div class="tab" data-t="lot">Lot report</div></div>
+
+<div class="wrap">
+  <div class="err" id="err"></div>
+  <div id="recordsTab">
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
+      <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
+      <select id="fTech"><option value="">All technicians</option></select>
+      <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
+      <select id="fDept"><option value="">All groups</option></select>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
+      <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
+    </div>
+    <table id="tbl"><thead id="thead"></thead><tbody id="rows"><tr><td colspan="20" class="empty">Loading…</td></tr></tbody></table>
+    <footer id="foot"></footer>
+  </div>
+  <div id="analysisTab" style="display:none"></div>
+  <div id="lotTab" style="display:none"></div>
+</div>
+
+<div class="modal" id="modal"><div class="card">
+  <div class="top"><b id="mTitle"></b>
+    <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
+    <button onclick="printLabel()">🖨 Print label</button><button onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button onclick="printTestCert()" title="Full component test certificate (A4) — every check with its result. Issued for any result.">🔧 Test certificate</button><span class="x" onclick="closeModal()">×</span></div>
+  <div class="body" id="mBody"></div>
+</div></div>
+<div id="labelArea"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/* inlined from lotreport.js */
+/* Lot report: every unit in a lot, not just the defective ones.
+ *
+ * A lot is the union of two sources — the serials the supplier declared on the uploaded
+ * intake sheet, and the units actually tested against that lot. Neither alone is the lot:
+ * a sheet serial that never arrived still has to show as NOT TESTED, and a unit tested
+ * under the lot but absent from the sheet still has to appear.
+ */
+(function (root) {
+  "use strict";
+
+  /** Same rule as the engine's _norm_serial, so both sides agree on identity. */
+  function normSerial(s) {
+    return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+
+  function normGroup(s) {
+    return String(s == null ? "" : s).trim().toLowerCase();
+  }
+
+  /** Supplier's claimed grade vs what we graded it. Blank on either side means no claim. */
+  function gradeMatch(supplier, tested) {
+    var a = String(supplier || "").trim().toUpperCase();
+    var b = String(tested || "").trim().toUpperCase();
+    if (!a || !b) return "";
+    return a === b ? "match" : "supplier " + a + " → " + b;
+  }
+
+  function isDefectiveResult(r) {
+    var v = String(r || "").toUpperCase();
+    return v === "FAIL" || v.indexOf("REJECT") === 0;
+  }
+
+  function latest(a, b) {
+    return new Date(b.tested_at || 0) > new Date(a.tested_at || 0) ? b : a;
+  }
+
+  /**
+   * opts: {units, supplierRows, audits, lotId, goodsInGroups}
+   *  - units:        latest tested record per serial, as the records table shapes them
+   *  - supplierRows: lot_serials rows (serial + supplier_* claims)
+   *  - audits:       every audit, used to find the Goods In pass for a unit
+   *  - goodsInGroups: department ids that count as Goods In (default ["goods_in"])
+   */
+  function lotRows(opts) {
+    var lotId = opts.lotId;
+    var goodsIn = (opts.goodsInGroups || ["goods_in"]).map(normGroup);
+
+    var bySerial = {};
+    (opts.units || []).forEach(function (u) {
+      if (u.lot_id !== lotId) return;
+      var k = normSerial(u.serial);
+      if (k) bySerial[k] = u;
+    });
+
+    var claims = {};
+    (opts.supplierRows || []).forEach(function (s) {
+      if (s.lot_id && s.lot_id !== lotId) return;
+      var k = normSerial(s.serial);
+      if (k) claims[k] = s;
+    });
+
+    // Latest Goods In audit per serial. Blank until the department is really recorded —
+    // never fall back to "the first test", which would mislabel every historic record.
+    var goodsInBySerial = {};
+    (opts.audits || []).forEach(function (a) {
+      if (goodsIn.indexOf(normGroup(a.department)) < 0) return;
+      var k = normSerial(a.serial);
+      if (!k) return;
+      goodsInBySerial[k] = goodsInBySerial[k] ? latest(goodsInBySerial[k], a) : a;
+    });
+
+    var keys = {};
+    Object.keys(bySerial).forEach(function (k) { keys[k] = true; });
+    Object.keys(claims).forEach(function (k) { keys[k] = true; });
+
+    return Object.keys(keys).sort().map(function (k) {
+      var u = bySerial[k] || null, c = claims[k] || {}, g = goodsInBySerial[k];
+      var overall = u ? (u.grade || "") : "";
+      return {
+        serial: u ? u.serial : (c.serial || k),
+        tested: !!u,
+        model: u ? (u.model || "") : (c.supplier_model || ""),
+        supplierGrade: c.supplier_grade || "",
+        goodsInGrade: g ? (g.grade || "") : "",
+        screenGrade: u ? (u.display_grade || "") : "",
+        bodyGrade: u ? (u.body_grade || "") : "",
+        overallGrade: overall,
+        gradeMatch: gradeMatch(c.supplier_grade, overall),
+        result: u ? (u.result || "") : "NOT TESTED",
+        battery: u ? u.batt_h : null,
+        cycles: u ? u.batt_c : null,
+        faults: u ? (u.faults || "") : "",
+        technician: u ? (u.tech_disp || u.technician || "") : "",
+        warehouse: u ? (u.warehouse || "") : "",
+        department: u ? (u.department || "") : "",
+        testedAt: u ? (u.tested_at || "") : "",
+        sku: u ? (u.sku || "") : "",
+        memory: u ? u.memory : (c.supplier_ram || ""),
+        storage: u ? u.storage : (c.supplier_ssd || ""),
+        po: u ? (u.po || "") : "",
+        supplier: u ? (u.supplier || "") : (c.supplier || ""),
+        _raw: u
+      };
+    });
+  }
+
+  function lotSummary(rows) {
+    var tested = rows.filter(function (r) { return r.tested; });
+    var defective = tested.filter(function (r) { return isDefectiveResult(r.result); });
+    var grades = {}, faults = {};
+    tested.forEach(function (r) {
+      if (r.overallGrade) grades[r.overallGrade] = (grades[r.overallGrade] || 0) + 1;
+      String(r.faults || "").split(/\s*[;,]\s*/).forEach(function (f) {
+        if (f) faults[f] = (faults[f] || 0) + 1;
+      });
+    });
+    return {
+      total: rows.length,
+      tested: tested.length,
+      notTested: rows.length - tested.length,
+      defective: defective.length,
+      // Over TESTED units: a lot half-way through inspection would otherwise look clean.
+      defectRate: tested.length ? Math.round((defective.length / tested.length) * 1000) / 10 : 0,
+      grades: grades,
+      faults: faults
+    };
+  }
+
+  /** The Details tab: one row per unit in the lot, header first. */
+  function lotDetailSheet(rows, lotId, fmtDate) {
+    var fmt = fmtDate || function (d) { return d || ""; };
+    var out = [["Serial", "Model", "SKU", "Supplier grade", "Goods In grade", "Screen grade",
+                "Body grade", "Overall grade", "Grade check", "Result", "Battery %", "Cycles",
+                "RAM", "Storage", "Faults", "Technician", "Warehouse", "Group", "Tested",
+                "Lot", "PO", "Supplier"]];
+    rows.forEach(function (r) {
+      out.push([r.serial, r.model, r.sku, r.supplierGrade, r.goodsInGrade, r.screenGrade,
+                r.bodyGrade, r.overallGrade, r.gradeMatch, r.result,
+                r.battery == null ? null : Math.min(100, r.battery), r.cycles,
+                r.memory, r.storage, r.faults, r.technician, r.warehouse, r.department,
+                r.testedAt ? fmt(r.testedAt) : "", lotId, r.po, r.supplier]);
+    });
+    return out;
+  }
+
+  /** The Summary tab: the lot's report figures, then grade and fault breakdowns. */
+  function lotSummarySheet(rows, lotId, generatedAt) {
+    var sum = lotSummary(rows);
+    var uniq = function (k) {
+      var seen = {};
+      rows.forEach(function (r) { if (r[k]) seen[r[k]] = true; });
+      return Object.keys(seen).join(", ");
+    };
+    var out = [["Metric", "Value"],
+      ["Lot", lotId],
+      ["Supplier", uniq("supplier")],
+      ["PO", uniq("po")],
+      ["Units in lot", sum.total],
+      ["Tested", sum.tested],
+      ["Not tested", sum.notTested],
+      ["Fail / reject", sum.defective],
+      ["Defect rate (% of tested)", sum.defectRate],
+      ["Report generated", generatedAt || ""],
+      [], ["Grade", "Units"]];
+    Object.keys(sum.grades).sort().forEach(function (g) { out.push([g, sum.grades[g]]); });
+    out.push([], ["Fault", "Units"]);
+    Object.keys(sum.faults).sort(function (a, b) { return sum.faults[b] - sum.faults[a]; })
+      .forEach(function (f) { out.push([f, sum.faults[f]]); });
+    return out;
+  }
+
+  var api = { lotRows: lotRows, lotSummary: lotSummary, normSerial: normSerial,
+              lotDetailSheet: lotDetailSheet, lotSummarySheet: lotSummarySheet,
+              gradeMatch: gradeMatch, isDefectiveResult: isDefectiveResult };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.YCLotReport = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+/* inlined from xlsx.js */
+/* Minimal multi-sheet .xlsx writer.
+ *
+ * Deliberately dependency-free: this page is served from GitHub Pages and is used in
+ * warehouses with unreliable internet, so pulling a spreadsheet library from a CDN would
+ * make exports fail exactly when the network does. Stored (uncompressed) ZIP entries and
+ * inline strings keep it to one readable file; correctness is pinned by tests/ that
+ * generate a workbook and re-open it with a real spreadsheet reader.
+ */
+(function (root) {
+  "use strict";
+
+  var CRC = (function () {
+    var t = new Int32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    var c = -1;
+    for (var i = 0; i < bytes.length; i++) c = CRC[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
+  function utf8(str) {
+    if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(str);
+    return new Uint8Array(Buffer.from(str, "utf8"));   // Node without TextEncoder
+  }
+
+  function esc(v) {
+    return String(v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      // Excel rejects most C0 control characters outright.
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  }
+
+  /** Excel refuses []:*?/\ in a sheet name and caps it at 31 characters. */
+  function sheetName(name) {
+    var s = String(name == null ? "" : name).replace(/[\[\]:*?\/\\]/g, "").slice(0, 31);
+    return s.trim() || "Sheet";
+  }
+
+  function sheetXml(rows) {
+    var out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'];
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r] || [];
+      out.push('<row r="' + (r + 1) + '">');
+      for (var c = 0; c < row.length; c++) {
+        var v = row[c];
+        if (v === null || v === undefined || v === "") continue;   // a blank cell is simply absent
+        var ref = colRef(c) + (r + 1);
+        if (typeof v === "number" && isFinite(v)) {
+          out.push('<c r="' + ref + '"><v>' + v + "</v></c>");
+        } else {
+          out.push('<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">'
+                   + esc(v) + "</t></is></c>");
+        }
+      }
+      out.push("</row>");
+    }
+    out.push("</sheetData></worksheet>");
+    return out.join("");
+  }
+
+  function colRef(i) {
+    var s = "";
+    for (i += 1; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;
+    return s;
+  }
+
+  function u16(n) { return [n & 0xff, (n >>> 8) & 0xff]; }
+  function u32(n) { return [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff]; }
+
+  /** Stored-only ZIP. No deflate: a lot export is a few hundred KB of XML and the
+   *  saving is not worth hand-rolling a compressor whose bugs would be silent. */
+  function zip(files) {
+    var local = [], central = [], offset = 0;
+    files.forEach(function (f) {
+      var data = utf8(f.content), name = utf8(f.name), sum = crc32(data);
+      var hdr = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+                          u32(sum), u32(data.length), u32(data.length),
+                          u16(name.length), u16(0));
+      local.push(new Uint8Array(hdr), name, data);
+      central.push(new Uint8Array([].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+        u32(sum), u32(data.length), u32(data.length),
+        u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset))), name);
+      offset += hdr.length + name.length + data.length;
+    });
+    var cenSize = central.reduce(function (n, p) { return n + p.length; }, 0);
+    var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0),
+      u16(files.length), u16(files.length), u32(cenSize), u32(offset), u16(0)));
+    var parts = local.concat(central, [end]);
+    var total = parts.reduce(function (n, p) { return n + p.length; }, 0);
+    var out = new Uint8Array(total), at = 0;
+    parts.forEach(function (p) { out.set(p, at); at += p.length; });
+    return out;
+  }
+
+  /** sheets: [{name, rows: [[cell, ...], ...]}] — the first row is the header. */
+  function buildXlsx(sheets) {
+    if (!sheets || !sheets.length) throw new Error("buildXlsx needs at least one sheet");
+    sheets.forEach(function (s) {
+      if (!s || !s.name) throw new Error("every sheet needs a name");
+    });
+    var names = sheets.map(function (s) { return sheetName(s.name); });
+    var files = [
+      { name: "[Content_Types].xml",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          + '<Default Extension="xml" ContentType="application/xml"/>'
+          + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          + names.map(function (_, i) {
+              return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" '
+                   + 'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+            }).join("")
+          + "</Types>" },
+      { name: "_rels/.rels",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+          + "</Relationships>" },
+      { name: "xl/workbook.xml",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+          + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+          + names.map(function (n, i) {
+              return '<sheet name="' + esc(n) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+            }).join("")
+          + "</sheets></workbook>" },
+      { name: "xl/_rels/workbook.xml.rels",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + names.map(function (_, i) {
+              return '<Relationship Id="rId' + (i + 1) + '" '
+                   + 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+                   + 'Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+            }).join("")
+          + "</Relationships>" }
+    ];
+    sheets.forEach(function (s, i) {
+      files.push({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", content: sheetXml(s.rows || []) });
+    });
+    return zip(files);
+  }
+
+  /** Hand the workbook to the browser as a download. */
+  function downloadXlsx(sheets, filename) {
+    var blob = new Blob([buildXlsx(sheets)],
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  }
+
+  var api = { buildXlsx: buildXlsx, downloadXlsx: downloadXlsx, _sheetName: sheetName, _esc: esc };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.YCXlsx = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+/* inlined from certificate.js */
+/* Full component test certificate — every test performed on a device, with its result.
+ *
+ * Distinct from the Certificate of Quality, which is a marketing A4 whose inspection block
+ * is a fixed list of category names with a tick beside each regardless of what ran. This
+ * one reports what the audit actually recorded, and is issued for any result: customer
+ * service needs the component breakdown for a failed unit most of all.
+ *
+ * Honesty rule: a state is never upgraded. N/A stays N/A, untested stays untested, and a
+ * record written before the checklist was uploaded says so rather than rendering blank.
+ */
+(function (root) {
+  "use strict";
+
+  // Same set, and the same order, as the unit report's proof-of-run table.
+  var AUTOMATED = [
+    ["thermal", "Thermal / CPU stress"], ["ram", "Memory (RAM)"], ["ssd", "Storage (SSD)"],
+    ["battcell", "Battery cell balance"], ["battery", "Battery drain"],
+    ["perf", "Performance benchmark"], ["memstress", "Memory under heat"],
+    ["thermalcycle", "Thermal-shock cycler"]
+  ];
+
+  var STATES = { pass: 1, fail: 1, na: 1, untested: 1 };
+
+  function fmtDuration(s) {
+    if (s == null || s <= 0) return "—";
+    s = Math.round(s);
+    return s >= 60 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : s + "s";
+  }
+
+  function readChecklist(snapshot) {
+    var d = (snapshot && snapshot.details) || {};
+    if (Array.isArray(d.checklist)) return d.checklist;
+    // The flat column is a JSON string (the CSV/Excel carrier).
+    var flat = (snapshot && snapshot.checklist) || d.checklist;
+    if (typeof flat === "string") {
+      try {
+        var parsed = JSON.parse(flat);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { /* an old or truncated value — treat as absent, never as empty */ }
+    }
+    return null;
+  }
+
+  function certificateRows(snapshot) {
+    var details = (snapshot && snapshot.details) || {};
+    var list = readChecklist(snapshot);
+
+    var groups = [], byName = {}, counts = { pass: 0, fail: 0, na: 0, untested: 0, total: 0 };
+    (list || []).forEach(function (it) {
+      var name = it.group || "Other checks";
+      if (!byName[name]) { byName[name] = { name: name, items: [] }; groups.push(byName[name]); }
+      var state = STATES[it.state] ? it.state : "unknown";
+      byName[name].items.push({ id: it.id, label: it.label || it.id, state: state });
+      if (counts[state] !== undefined) counts[state]++;
+      counts.total++;
+    });
+
+    var automated = [];
+    AUTOMATED.forEach(function (pair) {
+      var x = details[pair[0]];
+      if (!x || typeof x !== "object") return;      // absent from this audit — say nothing
+      var ran = x.ran === true || (!("ran" in x) && !!x.verdict);
+      automated.push({
+        id: pair[0], name: pair[1], ran: ran,
+        duration: ran ? fmtDuration(x.duration_s) : "—",
+        verdict: x.verdict || "", score: x.score == null ? "" : x.score,
+        bands: Array.isArray(x.bands) ? x.bands : []
+      });
+    });
+
+    return { groups: groups, automated: automated, counts: counts, hasChecklist: !!(list && list.length) };
+  }
+
+  var api = { certificateRows: certificateRows, fmtDuration: fmtDuration, AUTOMATED: AUTOMATED };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.YCCertificate = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+const SUPA="https://qulzvyhcpphntzuwyrnz.supabase.co";
+const KEY="sb_publishable_Cvk7Yshzceynd0jh9Znd6Q__Tearm51";
+let RAW=[],ROWS=[],sortK="tested_at",sortDir=-1,CURRENT=null;
+// Serials the supplier declared per lot, with the grade/specs they claimed. A lot is the
+// union of these and the units actually tested, so a declared serial that never arrived
+// still shows as NOT TESTED instead of vanishing from the report.
+let LOT_SERIALS=[];
+async function loadLotSerials(){
+  try{
+    const r=await fetch(`${SUPA}/rest/v1/lot_serials?select=*&limit=20000`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(r.ok){LOT_SERIALS=await r.json();
+      if(document.getElementById("lotTab").style.display!=="none")renderLotReport();}
+  }catch(e){/* table may predate the migration — the lot report still works, minus claims */}
+}
+const TEST_MARKERS=["PUBKEY","VERIFY","E2E","DEMO","SAMPLE","TEST-"];
+const isTest=r=>{const s=(r.serial||"").toUpperCase(),t=(r.technician||"").toLowerCase();
+  return TEST_MARKERS.some(m=>s.includes(m))||["verify","test","demo","e2e bot",""].includes(t);};
+function normResult(r){const v=(r||"").toUpperCase();
+  if(v.includes("REJECT"))return"REJECT";if(v.includes("INCOMPLETE"))return"INCOMPLETE";
+  if(v.startsWith("PASS"))return"PASS";if(v.startsWith("FAIL"))return"FAIL";return v?"OTHER":"";}
+function num(v){if(v==null)return null;const n=parseInt(String(v).replace(/[^0-9-]/g,""),10);return isNaN(n)?null:n;}
+// Failed checks are stored by their POSITIVE check-name (e.g. "Battery drain normal under
+// load"), which reads like a pass. Map them to plain fault wording so the column shows only
+// real faults, clearly worded. Unknown / actual marked defects (a real scratch) pass through.
+const FAULT_MAP={
+  "Boots to macOS / chip detected":"Won't boot / chip not detected","Battery drain normal under load":"Abnormal battery drain",
+  "Battery ≥ 85% capacity & not Service-recommended":"Battery <85% / service-recommended","No battery swelling / case bulge (safety)":"Battery swelling / case bulge",
+  "Fans spin / thermals OK":"Fan / thermal fault","RAM test passed":"RAM fault","No unusual noise / rattles":"Unusual noise / rattle",
+  "SSD detected":"SSD not detected","SSD write speed acceptable":"SSD slow / failing","Display — no dead pixels / lines":"Display: dead pixels / lines",
+  "True Tone / brightness range OK":"True Tone / brightness fault","All keys register":"Keyboard: key(s) not registering","Layout & language match":"Keyboard layout mismatch",
+  "Keyboard backlight works":"Keyboard backlight fault","Touch Bar lights & responds":"Touch Bar fault","Trackpad gestures + click":"Trackpad fault",
+  "Touch ID button works":"Touch ID fault","Wi-Fi connects":"Wi-Fi fault","Bluetooth pairs":"Bluetooth fault","All USB-C / Thunderbolt ports":"USB-C / port fault",
+  "Speakers — L/R channels":"Speaker fault","Microphone records":"Microphone fault","FaceTime camera":"Camera fault","Light sensor responds":"Light sensor fault",
+  "Hinge firm, lid aligned":"Hinge / lid loose or misaligned","Activation Lock OFF":"Activation Lock ON","Not MDM enrolled":"MDM enrolled","Not DEP-assigned":"DEP-assigned",
+  "DEP clear (live check / post-erase)":"DEP not clear","Sleep / wake works":"Sleep / wake fault","No recurring kernel panics":"Kernel panic(s)"};
+// ctx = {h: battery health %, cond: macOS battery condition} lets the battery capacity/condition
+// check name resolve to its ACTUAL reason — capacity vs macOS "Service Recommended" — so a 100%
+// battery never reads as "<85%".
+function faultPhrase(f,ctx){
+  f=String(f).trim().replace(/^Category:\s*/i,""); if(!f) return "";
+  if(/Battery\s*≥?\s*85%?\s*capacity/i.test(f)||f==="Battery <85% / service-recommended"){
+    if(ctx){
+      if(ctx.h!=null&&ctx.h<85) return "Battery capacity <85%";
+      if(ctx.cond&&/service|replace|fair|poor/i.test(ctx.cond)) return `Battery: macOS condition “${ctx.cond}”`;
+      return "Battery: service-recommended (macOS)";
+    }
+  }
+  return FAULT_MAP[f]||f;
+}
+// The accountable identity for a QC record is the LOGIN username (e.g. @swanzy),
+// not the generic role "Technician" some accounts carry as a display name. Show
+// the username when the name is empty or the generic "Technician"; otherwise show
+// the real name (with @username appended when they differ).
+function techLabel(name,user){
+  const n=(name||"").trim(), u=(user||"").trim();
+  if(u && (!n || n.toLowerCase()==="technician")) return "@"+u;
+  if(u && n && u.toLowerCase()!==n.toLowerCase()) return n+" (@"+u+")";
+  return n || (u?"@"+u:"");
+}
+function flat(r){const s=r.snapshot||{};
+  const _bh=num(r.battery_health??s.battery_health), _bc=r.battery_condition||s.battery_condition||"";
+  const faults=[...new Set(
+    [r.failed_categories,s.fault1,s.fault2,s.fault3,s.fault4,s.fault5,s.fault6,r.screen_issues,r.defects]
+    .filter(x=>x&&String(x).trim()).flatMap(x=>String(x).split(";")).map(f=>faultPhrase(f,{h:_bh,cond:_bc})).filter(Boolean)
+  )].join("; ");
+  return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
+    model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
+    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
+    tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),department:s.department||"",
+    warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
+    app_build:s.app_build||"",app_kind:s.app_kind||"",
+    grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
+    result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
+    batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
+    batt_cond:r.battery_condition||s.battery_condition||"",colour:r.colour||s.colour||"",
+    storage:num(r.storage_total_gb??s.storage_total_gb),wifi:r.wifi_ssid||s.wifi_ssid||"",
+    lot_id:s.lot_id||"",po:s.po||"",supplier:s.supplier||"",sku:s.sku||"",part_number:s.part_number||"",
+    cpu_speed:s.cpu_speed||"",cpu_cores:s.cpu_cores||"",gpu_cores:s.gpu_cores||"",
+    kbd_layout:s.kbd_layout||"",kbd_language:s.kbd_language||"",photos:s.photo_count||0,
+    perf_score:r.perf_score||s.perf_score||"",notes:r.notes||s.notes||"",client_uuid:r.client_uuid||s.client_uuid||"",faults,_raw:r};}
+const fmtDate=d=>{try{const x=new Date(d);return x.toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"})+" "+x.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});}catch(e){return d||"—";}};
+// Region-based tested time: show each unit in ITS OWN local time. The app stamps a
+// station-local string (tested_local); if absent (older records), convert the UTC
+// tested_at into the record's saved timezone, else the viewer's local time.
+// Bucket a record into one of the 3 operating regions by its warehouse / timezone.
+function regionGroup(r){
+  const w=(r&&r.warehouse||"").toLowerCase(), tz=(r&&r.timezone||"").toLowerCase();
+  if(/uae|dubai|abu ?dhabi|sharjah|ajman|muscat|emirat/.test(w)||/dubai|muscat|abu_dhabi/.test(tz)) return "UAE";
+  if(/france|paris|fr\b/.test(w)||/paris/.test(tz)) return "France";
+  if(/\buk\b|united kingdom|london|britain|england|scotland|wales/.test(w)||/london/.test(tz)) return "UK";
+  return w||tz?"Other":"";
+}
+function fmtTested(r){
+  const s=(r&&r.snapshot)||{};                       // works for flattened rows AND raw records
+  const tl=(r&&r.tested_local)||s.tested_local; if(tl) return tl;
+  const tz=(r&&r.timezone)||s.timezone;
+  const d=(r&&r.tested_at)||r;
+  try{const x=new Date(d);const o={day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"};
+    if(tz){try{o.timeZone=tz;}catch(e){}}
+    return x.toLocaleString(undefined,o).replace(",","");}catch(e){return fmtDate(d);}
+}
+const battTxt=r=>r.batt_h!=null?`${Math.min(100,r.batt_h)}% · ${r.batt_c??"?"} cyc`:"—";
+const specLine=r=>[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":""),r.year].filter(Boolean).join(" · ");
+
+// ---- customizable table columns (show/hide + drag to reorder) ---------------
+const ALLCOLS=[
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
+  {key:"year",label:"Year",sk:"year",html:r=>`<td class="muted">${r.year||""}</td>`},
+  {key:"memory",label:"RAM",sk:"memory",html:r=>`<td>${r.memory?r.memory+" GB":"—"}</td>`},
+  {key:"storage",label:"SSD",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
+  {key:"colour",label:"Colour",sk:"colour",html:r=>`<td>${r.colour||"—"}</td>`},
+  {key:"sku",label:"YesAgain SKU",sk:"sku",html:r=>`<td class="mono">${r.sku||"—"}</td>`},
+  {key:"display_grade",label:"LCD grade",sk:"display_grade",html:r=>`<td class="gr ${r.display_grade}">${r.display_grade||"—"}</td>`},
+  {key:"body_grade",label:"Body grade",sk:"body_grade",html:r=>`<td class="gr ${r.body_grade}">${r.body_grade||"—"}</td>`},
+  {key:"grade",label:"Overall grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
+  {key:"chip",label:"CPU / Chip",sk:"chip",html:r=>`<td class="muted">${r.chip||"—"}</td>`},
+  {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${r.cpu_speed||"—"}</td>`},
+  {key:"cores",label:"CPU/GPU cores",html:r=>`<td class="muted">${(r.cpu_cores||r.gpu_cores)?((r.cpu_cores?r.cpu_cores+"C":"")+(r.gpu_cores?r.gpu_cores+"G":"")):"—"}</td>`},
+  {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
+  {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
+  {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
+  {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
+  {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
+  {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
+];
+const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department","faults"];
+let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
+const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
+const colW=k=>WIDTHS[k]||DEFAULT_W[k]||110;
+const colKey=()=>"qcCols:"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN
+function loadCols(){ORDER=ALLCOLS.map(c=>c.key);VIS=DEFAULT_VIS.slice();WIDTHS={};
+  try{const s=JSON.parse(localStorage.getItem(colKey())||"null");
+    if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
+      VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
+function saveCols(){localStorage.setItem(colKey(),JSON.stringify({order:ORDER,visible:VIS,widths:WIDTHS}));}
+function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
+function tblWidth(){return 70+visCols().reduce((s,c)=>s+colW(c.key),0);}
+function renderHead(){const cols=visCols();
+  document.getElementById("tbl").style.width=tblWidth()+"px";
+  document.getElementById("thead").innerHTML='<tr><th style="width:70px;cursor:default;overflow:visible"><input type="checkbox" id="selAll" title="Select all"></th>'+
+    cols.map(c=>`<th data-col="${c.key}" ${c.sk?`data-k="${c.sk}"`:""} draggable="true" style="width:${colW(c.key)}px;position:relative;cursor:pointer">${c.label}<span class="rsz" data-col="${c.key}"></span></th>`).join("")+"</tr>";
+  document.querySelectorAll("#thead th[data-k]").forEach(h=>h.onclick=()=>{if(h._rsz){h._rsz=false;return;}const k=h.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==="tested_at")?-1:1;}render();});
+  // drag a header to MOVE the column
+  document.querySelectorAll("#thead th[data-col]").forEach(h=>{const k=h.dataset.col;
+    h.ondragstart=e=>{if(e.target.classList.contains("rsz")){e.preventDefault();return;}dragK=k;};
+    h.ondragover=e=>e.preventDefault();
+    h.ondrop=e=>{e.preventDefault();if(!dragK||dragK===k)return;const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderHead();render();};});
+  // drag the right edge to RESIZE the column
+  document.querySelectorAll("#thead .rsz").forEach(rz=>rz.onmousedown=e=>{e.preventDefault();e.stopPropagation();
+    const k=rz.dataset.col,th=rz.parentElement,sx=e.clientX,sw=th.offsetWidth;
+    const mv=ev=>{WIDTHS[k]=Math.max(40,sw+(ev.clientX-sx));th.style.width=WIDTHS[k]+"px";document.getElementById("tbl").style.width=tblWidth()+"px";};
+    const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);th._rsz=true;saveCols();};
+    document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);});
+  const sa=document.getElementById("selAll");sa.onclick=e=>{e.stopPropagation();if(sa.checked)ROWS.forEach(r=>SEL.add(r.id));else SEL.clear();render();};}
+let dragK=null;
+function renderColMgr(){const m=document.getElementById("colMgr");
+  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=ALLCOLS.find(x=>x.key===k);
+    return `<div class="ci" draggable="true" data-k="${k}"><span class="gw">⠿</span><input type="checkbox" ${VIS.includes(k)?"checked":""}> ${c.label}</div>`;}).join("");
+  m.querySelectorAll(".ci").forEach(el=>{const k=el.dataset.k;
+    el.querySelector("input").onchange=e=>{if(e.target.checked){if(!VIS.includes(k))VIS.push(k);}else VIS=VIS.filter(x=>x!==k);saveCols();renderHead();render();};
+    el.ondragstart=()=>dragK=k;
+    el.ondragover=e=>{e.preventDefault();el.classList.add("dragover");};
+    el.ondragleave=()=>el.classList.remove("dragover");
+    el.ondrop=e=>{e.preventDefault();el.classList.remove("dragover");if(!dragK||dragK===k)return;
+      const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
+
+async function load(){
+  document.getElementById("err").style.display="none";
+  try{
+    const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=10000`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(!res.ok)throw new Error("HTTP "+res.status);
+    RAW=(await res.json()).map(flat);fillTechs();render();
+    loadLotSerials();
+  }catch(e){const el=document.getElementById("err");el.style.display="block";
+    el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
+    document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
+}
+function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.tech_disp).filter(Boolean))].sort();
+  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
+  // Fixed region groups (UAE/France/UK) + "Other" only if some record doesn't map to one.
+  const groups=new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>regionGroup(r)).filter(Boolean));
+  const sel=document.getElementById("fWh"),keep=sel.value;
+  let opts='<option value="">All regions</option>'+["UAE","France","UK"].map(g=>`<option>${g}</option>`).join("");
+  if(groups.has("Other"))opts+='<option>Other</option>';
+  sel.innerHTML=opts; sel.value=keep;
+  // Groups come from the data, not a fixed list: a site may add or rename one.
+  const dsel=document.getElementById("fDept"),dkeep=dsel.value;
+  const depts=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.department).filter(Boolean))].sort();
+  dsel.innerHTML='<option value="">All groups</option>'+depts.map(d=>`<option>${escv(d)}</option>`).join("");
+  dsel.value=dkeep;}
+function current(){
+  const q=document.getElementById("q").value.toLowerCase().trim();
+  const fr=document.getElementById("fResult").value,fg=document.getElementById("fGrade").value;
+  const ft=document.getElementById("fTech").value,hide=document.getElementById("hideTest").checked;
+  const fw=document.getElementById("fWh").value,fd=document.getElementById("fDept").value;
+  const df=document.getElementById("dFrom").value,dt=document.getElementById("dTo").value;
+  let rows=RAW.filter(r=>{
+    if(hide&&isTest(r._raw))return false;
+    if(fr&&r.result!==fr)return false;if(fg&&r.grade!==fg)return false;if(ft&&r.tech_disp!==ft)return false;
+    if(fw&&regionGroup(r)!==fw)return false;
+    if(fd&&(r.department||"")!==fd)return false;
+    const d=(r.tested_at||"").slice(0,10);
+    if(df&&d<df)return false;if(dt&&d>dt)return false;
+    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    return true;});
+  // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
+  if(document.getElementById("uniqSerial").checked){
+    const m=new Map();
+    for(const r of rows){const k=(r.serial||r.id).toUpperCase();const e=m.get(k);
+      if(!e||(r.tested_at||"")>(e.tested_at||""))m.set(k,r);}
+    rows=[...m.values()];}
+  rows.sort((a,b)=>{let x=a[sortK]??"",y=b[sortK]??"";if(sortK==="batt"){x=a.batt_h??-1;y=b.batt_h??-1;}if(sortK==="storage"){x=a.storage??-1;y=b.storage??-1;}
+    return(x>y?1:x<y?-1:0)*sortDir;});
+  return rows;}
+function render(){
+  ROWS=current();const real=ROWS;
+  const uniq=latestPerSerial(real);                       // unique units for the quality numbers
+  const units=uniq.length;
+  const pass=uniq.filter(r=>r.result==="PASS").length;
+  const fail=uniq.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
+  const wk=Date.now()-7*864e5,last7=real.filter(r=>{const t=Date.parse(r.tested_at);return t&&t>=wk;}).length;
+  const passRate=uniq.length?Math.round(pass/uniq.length*100):0;
+  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate (units)"],[fail,"fail / reject (units)"],[last7,"tests in last 7 days"]]
+    .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+  const cols=visCols(),tb=document.getElementById("rows");
+  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
+  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
+  document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
+  renderAnalysis(real);
+  if(document.getElementById("lotTab").style.display!=="none")renderLotReport();
+}
+function bars(map,color,limit){const ent=Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,limit||99);
+  const mx=Math.max(1,...ent.map(e=>e[1]));
+  return ent.map(([k,v])=>`<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${color||'var(--navy)'}"></div></div><div class="v">${v}</div></div>`).join("")||'<div class="muted">No data.</div>';}
+// Split a record's faults into clean, normalised fault names (drop the "(...)" detail).
+function splitFaults(r){return (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean)
+  .map(f=>f.replace(/\s*\(.*?\)\s*/g,"").replace(/^Category:\s*/i,"").trim()).filter(Boolean);}
+// A unit counts as defective if it failed/was rejected OR carries any recorded fault.
+function isDefective(r){return r.result==="FAIL"||r.result==="REJECT"||!!(r.faults&&r.faults.trim());}
+// Bars showing DEFECT RATE per key (map: key -> {total, fail}). Colour-coded by rate.
+function rateBars(map){const ent=Object.entries(map).filter(([k])=>k&&k!=="—")
+    .sort((a,b)=>(b[1].fail/b[1].total-a[1].fail/a[1].total)||(b[1].total-a[1].total)).slice(0,12);
+  if(!ent.length)return '<div class="muted">No lot / supplier recorded on these units yet — add it at intake.</div>';
+  return ent.map(([k,v])=>{const pct=Math.round(v.fail/v.total*100),col=pct>=20?'var(--bad)':pct>=10?'var(--watch)':'var(--ok)';
+    return `<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="v" style="width:auto;min-width:92px">${pct}% <span class="muted" style="font-weight:500">(${v.fail}/${v.total})</span></div></div>`;}).join("");}
+function renderAnalysis(rows){
+  const real=latestPerSerial(rows);          // UNIQUE UNITS only — latest test per serial, no re-test double-counting
+  const byRes={},byGr={},byModel={},byTech={},faults={},bySup={},byLot={},modelFault={},faultTot={},modelDef={};
+  real.forEach(r=>{byRes[r.result||"—"]=(byRes[r.result||"—"]||0)+1;
+    byGr[r.grade||"—"]=(byGr[r.grade||"—"]||0)+1;
+    if(r.model)byModel[r.model]=(byModel[r.model]||0)+1;
+    if(r.tech_disp)byTech[r.tech_disp]=(byTech[r.tech_disp]||0)+1;
+    const def=isDefective(r)?1:0;
+    if(def&&r.model)modelDef[r.model]=(modelDef[r.model]||0)+1;   // unique DEFECTIVE units of this model
+    if(r.supplier){const s=bySup[r.supplier]=bySup[r.supplier]||{total:0,fail:0};s.total++;s.fail+=def;}
+    if(r.lot_id){const s=byLot[r.lot_id]=byLot[r.lot_id]||{total:0,fail:0};s.total++;s.fail+=def;}
+    splitFaults(r).forEach(f=>{faults[f]=(faults[f]||0)+1;faultTot[f]=(faultTot[f]||0)+1;
+      if(r.model){(modelFault[r.model]=modelFault[r.model]||{})[f]=((modelFault[r.model]||{})[f]||0)+1;}});});
+  // model × fault matrix — cells = unique units of that model with the fault; Total = unique defective units
+  const topF=Object.entries(faultTot).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
+  const topM=Object.entries(modelDef).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
+  let matrix='<div class="muted">No model / fault data yet.</div>';
+  if(topF.length&&topM.length){matrix=`<div style="overflow-x:auto"><table class="matrix"><tr><th>Model</th>${topF.map(f=>`<th title="${f}">${f}</th>`).join("")}<th>Defective units</th></tr>`+
+    topM.map(m=>{const fs=modelFault[m]||{};
+      return `<tr><td title="${m}">${m}</td>${topF.map(f=>{const c=fs[f]||0;return `<td class="${c>=3?'hot':c>0?'warm':''}">${c||""}</td>`;}).join("")}<td><b>${modelDef[m]||0}</b></td></tr>`;}).join("")+`</table></div>`;}
+  const days={};for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);days[d]=0;}
+  rows.forEach(r=>{const d=(r.tested_at||"").slice(0,10);if(d in days)days[d]++;});   // throughput = actual test events
+  const dv=Object.values(days),dmx=Math.max(1,...dv);
+  const resColor={PASS:'var(--ok)',FAIL:'var(--bad)',REJECT:'var(--bad)',INCOMPLETE:'var(--watch)'};
+  const resBars=Object.entries(byRes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const mx=Math.max(1,...Object.values(byRes));
+    return `<div class="bar"><div class="lab"><span class="pill ${k}">${k}</span></div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${resColor[k]||'var(--muted)'}"></div></div><div class="v">${v}</div></div>`;}).join("");
+  document.getElementById("analysisTab").innerHTML=`
+    <div class="muted" style="font-size:12px;margin:2px 2px 12px">Every figure below counts <b>unique units</b> (latest test per serial) — re-tests are never double-counted. “Tests per day” is the only chart that counts actual test events.</div>
+    <div class="grid2">
+      <div class="chart"><h3>⚠️ Top faults — defect analysis</h3>${bars(faults,'var(--bad)',14)}</div>
+      <div class="chart"><h3>Defect rate by supplier</h3>${rateBars(bySup)}</div>
+      <div class="chart"><h3>Defect rate by lot</h3>${rateBars(byLot)}</div>
+      <div class="chart"><h3>Result breakdown</h3>${resBars||'<div class="muted">No data.</div>'}</div>
+      <div class="chart" style="grid-column:1/-1"><h3>Faults by model — unique units (top 8 models × top 6 faults)</h3>${matrix}</div>
+      <div class="chart"><h3>Grade distribution</h3>${bars(byGr,'var(--blue)',8)}</div>
+      <div class="chart"><h3>By model — volume</h3>${bars(byModel,'var(--navy2)',12)}</div>
+      <div class="chart"><h3>By technician</h3>${bars(byTech,'var(--navy)',12)}</div>
+      <div class="chart"><h3>Tests per day — last 30 days</h3>
+        <div class="days">${dv.map(v=>`<div class="d" title="${v}" style="height:${Math.round(v/dmx*100)}%"></div>`).join("")}</div>
+        <div class="muted" style="font-size:11px;margin-top:6px">${Object.keys(days)[0].slice(5)} → today · peak ${dmx}/day</div>
+      </div>
+    </div>`;
+}
+
+// ===== LOT REPORT — pick a lot → full defect detail for QC team / supplier claims =====
+// Lot analysis works off the full deduped dataset (latest test per serial), independent of
+// the Records-tab filters, so a lot always shows every unit that passed through it.
+// Collapse a list of test rows to UNIQUE UNITS — the latest test per serial. Every
+// analysis runs through this so a re-tested unit is never double-counted.
+function latestPerSerial(rows){const m=new Map();
+  for(const r of rows){const k=(r.serial||r.id||"").toUpperCase();const e=m.get(k);
+    if(!e||(r.tested_at||"")>(e.tested_at||""))m.set(k,r);}
+  return [...m.values()];}
+function lotBase(){return latestPerSerial(RAW.filter(r=>!isTest(r._raw)));}
+let LOT_SEL="";
+function lotUnits(){return lotBase().filter(r=>r.lot_id===LOT_SEL);}
+function dchip(d){return d?fmtDate(d).split(" ").slice(0,3).join(" "):"—";}
+function lotAllRows(){
+  return YCLotReport.lotRows({units:lotBase(), supplierRows:LOT_SERIALS,
+    audits:RAW.filter(r=>!isTest(r._raw)), lotId:LOT_SEL, goodsInGroups:GOODS_IN_GROUPS});
+}
+// Department ids that count as Goods In. Kept as a list because a site may name the group
+// differently; a blank Goods In column is correct until the group is really recorded.
+const GOODS_IN_GROUPS=["goods_in","goods in","goodsin"];
+let LOTROWS=[];
+function renderLotReport(){
+  const host=document.getElementById("lotTab"),base=lotBase();
+  const lots=[...new Set(base.map(r=>r.lot_id).filter(Boolean).concat(
+      LOT_SERIALS.map(r=>r.lot_id).filter(Boolean)))].sort();
+  if(!lots.length){host.innerHTML=`<div class="empty">No lot numbers on the records yet.<br>Record a <b>lot / PO / supplier</b> at intake and every batch will appear here — with its defect rate, faults, and a unit-by-unit sheet you can hand to your quality team or send to the supplier.</div>`;return;}
+  if(!LOT_SEL||!lots.includes(LOT_SEL))LOT_SEL=lots[0];
+  const u=base.filter(r=>r.lot_id===LOT_SEL);
+  const rows=lotAllRows(); LOTROWS=rows;
+  const sum=YCLotReport.lotSummary(rows);
+  const sup=[...new Set(rows.map(r=>r.supplier).filter(Boolean))].join(", ")||"—";
+  const po=[...new Set(rows.map(r=>r.po).filter(Boolean))].join(", ")||"—";
+  const dts=rows.map(r=>r.testedAt).filter(Boolean).sort();
+  const ft={};Object.keys(sum.faults).forEach(k=>ft[k]=sum.faults[k]);
+  const models=[...new Set(rows.map(r=>r.model).filter(Boolean))];
+  const gcell=g=>g?`<td class="gr ${g}">${g}</td>`:`<td class="muted">—</td>`;
+  const trows=rows.map((r,i)=>`<tr ${r.tested?`onclick="openRowObj(LOTROWS[${i}]._raw)" style="cursor:pointer"`:'class="untested"'}>
+      <td class="mono">${escv(r.serial)}</td><td>${escv(r.model)||"—"}</td>
+      ${gcell(r.supplierGrade)}${gcell(r.goodsInGrade)}${gcell(r.screenGrade)}${gcell(r.overallGrade)}
+      <td><span class="pill ${r.tested?(r.result||'OTHER'):'OTHER'}">${escv(r.result)||"—"}</span></td>
+      <td>${r.battery!=null?Math.min(100,r.battery)+"%":"—"}</td>
+      <td class="muted" style="font-size:11.5px">${escv(r.gradeMatch)}</td>
+      <td style="white-space:normal;color:var(--bad);font-size:12px">${escv(r.faults)}</td>
+      <td class="muted">${escv(r.technician)}</td>
+      <td class="muted" style="white-space:nowrap">${r.testedAt?fmtDate(r.testedAt):"—"}</td></tr>`).join("")
+    ||`<tr><td colspan="12" class="empty">No units in this lot yet.</td></tr>`;
+  host.innerHTML=`
+    <div class="lotbar">
+      <label style="font-weight:700;color:var(--navy)">📦 Lot</label>
+      <select id="lotPick">${lots.map(l=>`<option ${l===LOT_SEL?"selected":""}>${l}</option>`).join("")}</select>
+      <span class="chip">Supplier: ${sup}</span><span class="chip">PO: ${po}</span><span class="chip">${dchip(dts[0])} → ${dchip(dts[dts.length-1])}</span>
+      <div style="flex:1"></div>
+      <div class="btnrow">
+        <button class="btn orange" onclick="lotExport()">⤓ Export full lot (Excel)</button>
+        <button class="btn" onclick="printLotReport()">🖨 Print / PDF report</button>
+      </div>
+    </div>
+    <div class="lr-stats">
+      <div class="lr-stat"><div class="n">${sum.total}</div><div class="l">units in lot</div></div>
+      <div class="lr-stat"><div class="n">${sum.tested}</div><div class="l">tested</div></div>
+      <div class="lr-stat ${sum.notTested?'':''}"><div class="n">${sum.notTested}</div><div class="l">not tested</div></div>
+      <div class="lr-stat bad"><div class="n">${sum.defective}</div><div class="l">fail / reject</div></div>
+      <div class="lr-stat ${sum.defectRate>=20?'bad':''}"><div class="n">${sum.defectRate}%</div><div class="l">defect rate (of tested)</div></div>
+      <div class="lr-stat"><div class="n">${Object.keys(ft).length}</div><div class="l">distinct faults</div></div>
+    </div>
+    <div class="grid2" style="margin-bottom:16px">
+      <div class="chart"><h3>Faults in this lot</h3>${bars(ft,'var(--bad)',12)}</div>
+      <div class="chart"><h3>Models in this lot</h3>${bars(Object.fromEntries(models.map(m=>[m,rows.filter(r=>r.model===m).length])),'var(--navy2)',12)}</div>
+    </div>
+    <div class="report">
+      <div class="rhd"><div class="t">All units — Lot ${escv(LOT_SEL)}</div><div class="s">Supplier ${sup} · PO ${po} · ${sum.total} units (${sum.tested} tested, ${sum.notTested} not tested) · ${sum.defective} defective · ${sum.defectRate}% of tested · click a tested row for the full unit report</div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Serial</th><th>Model</th><th>Supplier</th><th>Goods In</th><th>Screen</th><th>Overall</th><th>Result</th><th>Batt</th><th>Grade check</th><th>Faults reported</th><th>Tech</th><th>Tested</th></tr></thead><tbody>${trows}</tbody></table></div>
+    </div>`;
+  document.getElementById("lotPick").onchange=e=>{LOT_SEL=e.target.value;renderLotReport();};
+}
+// Two tabs: every unit with full detail, and the lot's report summary.
+function lotExport(){
+  const rows=lotAllRows();
+  YCXlsx.downloadXlsx([
+    {name:"Details", rows:YCLotReport.lotDetailSheet(rows, LOT_SEL, fmtDate)},
+    {name:"Summary", rows:YCLotReport.lotSummarySheet(rows, LOT_SEL, new Date().toLocaleString())}],
+    `YesAgain Lot ${LOT_SEL} — full report ${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+function printLotReport(){const u=lotUnits(),defects=u.filter(isDefective);
+  const sup=[...new Set(u.map(r=>r.supplier).filter(Boolean))].join(", ")||"—";
+  const po=[...new Set(u.map(r=>r.po).filter(Boolean))].join(", ")||"—";
+  const total=u.length,fail=u.filter(r=>r.result==="FAIL"||r.result==="REJECT").length,rate=total?Math.round(defects.length/total*100):0;
+  const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const rows=defects.map(r=>`<tr><td>${esc(r.serial)}</td><td>${esc(r.model)} ${esc(r.year||"")}</td><td>${esc(r.sku)}</td><td>${esc(r.grade)}</td><td>${esc(r.result)}</td><td>${r.batt_h!=null?Math.min(100,r.batt_h)+"%":""}</td><td>${esc(r.faults)}</td><td>${esc(fmtDate(r.tested_at))}</td></tr>`).join("");
+  const w=window.open("","_blank");if(!w){alert("Allow pop-ups to print the lot report.");return;}
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Lot ${esc(LOT_SEL)} — QC report</title>
+  <style>body{font-family:-apple-system,Arial,sans-serif;color:#1b2430;margin:26px}.hd{border-bottom:3px solid #fbb03b;padding-bottom:10px}
+  h1{color:#112747;margin:0;font-size:20px}.s{color:#5b6b82;font-size:13px}.b{display:flex;gap:20px;margin:14px 0;flex-wrap:wrap;font-size:13px}.b b{color:#112747}
+  h2{font-size:14px;color:#112747;margin:18px 0 6px}table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{border:1px solid #d8dee8;padding:6px 8px;text-align:left}th{background:#112747;color:#fff}tr:nth-child(even) td{background:#f6f8fb}</style>
+  <div class="hd"><h1>YesAgain — QC Lot Report</h1><div class="s">Quality-control defect report · for supplier claim / internal review</div></div>
+  <div class="b"><div><b>Lot:</b> ${esc(LOT_SEL)}</div><div><b>Supplier:</b> ${esc(sup)}</div><div><b>PO:</b> ${esc(po)}</div><div><b>Units in lot:</b> ${total}</div><div><b>Fail / reject:</b> ${fail}</div><div><b>Defect rate:</b> ${rate}%</div><div><b>Generated:</b> ${new Date().toLocaleString()}</div></div>
+  <h2>Defective units (${defects.length})</h2>
+  <table><thead><tr><th>Serial</th><th>Model</th><th>SKU</th><th>Grade</th><th>Result</th><th>Battery</th><th>Faults reported</th><th>Tested</th></tr></thead><tbody>${rows||'<tr><td colspan="8">No defects — all units passed.</td></tr>'}</tbody></table>
+  <p class="s" style="margin-top:20px">Generated by YesAgain · Yes Check QC</p>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),350);}
+function openModal(i){openRowObj(ROWS[i]);}
+function openRowObj(r){if(!r)return;CURRENT=r;
+  document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
+  const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  document.getElementById("mBody").innerHTML=`
+    <dl class="kv">
+      ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
+      ${row("Overall grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
+      ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).map(escv).join(" / "))}
+      ${row("Tested",escv(fmtTested(r))+(r.timezone?` <span class="muted">(${escv(r.timezone)})</span>`:""))}${row("Technician",escv(r.technician)+(r.technician_username&&r.technician_username!==r.technician?` (@${escv(r.technician_username)})`:""))}${row("Warehouse",escv(r.warehouse))}${row("Department",escv(r.department))}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+escv(r.app_build)):"")}</dl>
+    <div class="sec">Specification</div><dl class="kv">
+      ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("Year",escv(r.year))}${row("Chip",escv(r.chip))}
+      ${row("CPU speed",escv(r.cpu_speed))}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).map(escv).join(" / "))}
+      ${row("RAM",r.memory?r.memory+" GB":"")}${row("SSD / Storage",r.storage?r.storage+" GB":"")}
+      ${row("Colour",escv(r.colour))}${row("SKU",escv(r.sku))}${row("Part number",escv(r.part_number))}
+      ${row("Keyboard",[r.kbd_layout,r.kbd_language].filter(Boolean).map(escv).join(" · "))}</dl>
+    <div class="sec">Battery &amp; performance</div><dl class="kv">
+      ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
+      ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
+    <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
+    <div id="wipeSec"></div>
+    ${testExecHTML(r)}
+    ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
+    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
+    ${historyHTML(r)}`;
+  fillLabelSizes();
+  loadWipeStatus(r.serial);
+  document.getElementById("modal").classList.add("show");}
+/* Test-execution accountability: did the tech actually RUN each automated /
+   performance test, and for how long? Durations are recorded by the engine —
+   not entered by hand — so a skipped or cut-short test is visible here. */
+function testExecHTML(r){
+  const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
+  if(!d) return "";
+  const TESTS=[["thermal","Thermal / CPU stress"],["ram","Memory (RAM)"],["ssd","Storage (SSD)"],
+    ["battcell","Battery cell balance"],["battery","Battery drain"],["perf","Performance benchmark"],
+    ["memstress","Memory under heat"],["thermalcycle","Thermal-shock cycler"]];
+  const fmtD=s=>{if(s==null||s<=0)return"—";s=Math.round(s);return s>=60?Math.floor(s/60)+"m "+(s%60)+"s":s+"s";};
+  let any=false;
+  const rows=TESTS.map(([id,name])=>{
+    const x=d[id];
+    const has=x&&typeof x==="object"&&("ran" in x||"duration_s" in x||"verdict" in x);
+    if(has)any=true;
+    const ran=has&&(x.ran===true||(!("ran" in x)&&!!x.verdict));
+    return `<tr><td>${escv(name)}</td>
+      <td style="font-weight:700;color:${ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${ran?"RUN — "+fmtD(x.duration_s):"NOT RUN"}</td>
+      <td class="muted">${has?escv(x.verdict||"—"):"—"}</td></tr>`;
+  }).join("");
+  if(!any) return "";   // old audits without the fields — no false NOT-RUNs
+  return `<div class="sec">Test execution — proof of run</div>
+    <table style="font-size:12px"><thead><tr><th>Test</th><th>Executed</th><th>Engine verdict</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:4px">Run lengths recorded by the engine — not entered by the technician.</div>`;
+}
+/* Data-wipe certification status — read from the wipe_certificate_status view
+   (single source of truth). HONESTY RULE: an initiated-only certificate never
+   renders as "wiped ✓"; only evidence-verified + issued certs show as certified. */
+async function loadWipeStatus(serial){
+  const el=document.getElementById("wipeSec");
+  if(!el||!serial) return;
+  try{
+    const rows=await (await fetch(`${SUPA}/rest/v1/wipe_certificate_status?serial=eq.${encodeURIComponent(serial)}&select=certificate_id,derived_status,verified_at,initiated_row_at,wipe_certificate:initiated_cert&order=initiated_row_at.desc&limit=5`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+    if(!Array.isArray(rows)||!rows.length){el.innerHTML="";return;}
+    const S={certified:["CERTIFIED — wipe verified","var(--ok,#1d9e75)"],
+      verified_pending_issue:["Wipe verified — certificate pending issue","var(--ok,#1d9e75)"],
+      verification_pending:["Wipe initiated — verification pending","#c77700"],
+      inconclusive:["Wipe verification INCONCLUSIVE — re-verify","#c77700"],
+      unverified_expired:["UNVERIFIED — not certified","var(--bad,#c0392b)"],
+      failed:["WIPE VERIFICATION FAILED","var(--bad,#c0392b)"]};
+    let h='<div class="sec">Data erasure</div>';
+    rows.forEach(r0=>{
+      const c=r0.wipe_certificate||{};
+      const st=S[r0.derived_status]||[r0.derived_status,"#888"];
+      const lvl=c.certification_level?` · ${escv(c.certification_level)}`:"";
+      const cat=(c.standards&&c.standards.nist_sp_800_88_r1&&c.standards.nist_sp_800_88_r1.category)
+                ? ` · NIST 800-88: ${escv(c.standards.nist_sp_800_88_r1.category)}`:"";
+      const signed=c.signature?` · signed (key ${escv((c.signature.key_id||"").slice(0,8))}…)`:" · unsigned";
+      h+=`<div style="border-left:4px solid ${st[1]};padding:6px 10px;margin:4px 0;font-size:13px;background:rgba(0,0,0,.02)">
+        <b style="color:${st[1]}">${st[0]}</b>
+        <div class="muted" style="font-size:11.5px">${escv(r0.certificate_id||"")}${lvl}${cat}${c.cert_version===2?signed:""}
+        · initiated ${escv((r0.initiated_row_at||"").slice(0,16).replace("T"," "))}${r0.verified_at?` · verified ${escv(r0.verified_at.slice(0,16).replace("T"," "))}`:""}</div></div>`;
+    });
+    el.innerHTML=h;
+  }catch(e){el.innerHTML="";}
+}
+function closeModal(){document.getElementById("modal").classList.remove("show");}
+document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
+
+// ---- scan / search: the box auto-filters live (wired below). A handheld scanner just
+// types the serial in → the table narrows to matches. If it narrows to ONE unit, Enter opens it.
+document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&ROWS.length===1)openModal(0);});
+
+// ---- label reprint (Code 128 barcode, native window.print) ------------------
+const C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+function code128svg(text,unit,h){text=String(text||"").replace(/[^\x20-\x7e]/g,"");
+  const vals=[104];for(const ch of text)vals.push(ch.charCodeAt(0)-32);
+  let sum=104;for(let i=1;i<vals.length;i++)sum+=vals[i]*i;vals.push(sum%103);vals.push(106);
+  let mods="";vals.forEach(v=>mods+=C128[v]);
+  let x=0,rects="";for(let i=0;i<mods.length;i++){const w=(+mods[i])*unit;if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block">${rects}</svg>`;}
+// Code 39 ("Code 3 of 9") — used on the LABELS (matches the app). Each char = 9 elements
+// (idx 0,2,4,6,8 = bars, odd = spaces); "1" = wide. Wrapped in the * start/stop char.
+const CODE39={"0":"000110100","1":"100100001","2":"001100001","3":"101100000","4":"000110001",
+ "5":"100110000","6":"001110000","7":"000100101","8":"100100100","9":"001100100",
+ "A":"100001001","B":"001001001","C":"101001000","D":"000011001","E":"100011000",
+ "F":"001011000","G":"000001101","H":"100001100","I":"001001100","J":"000011100",
+ "K":"100000011","L":"001000011","M":"101000010","N":"000010011","O":"100010010",
+ "P":"001010010","Q":"000000111","R":"100000110","S":"001000110","T":"000010110",
+ "U":"110000001","V":"011000001","W":"111000000","X":"010010001","Y":"110010000",
+ "Z":"011010000","-":"010000101",".":"110000100"," ":"011000100","*":"010010100",
+ "$":"010101000","/":"010100010","+":"010001010","%":"000101010"};
+function code39svg(text,unit,h){
+  const up=String(text||"").toUpperCase().replace(/[^0-9A-Z\-. $\/+%]/g,"").replace(/\*/g,"");
+  const chars=("*"+up+"*").split(""); const wide=unit*2.5, gap=unit;
+  let x=0,rects="";
+  chars.forEach((ch,ci)=>{const pat=CODE39[ch];if(!pat)return;
+    for(let i=0;i<9;i++){const w=(pat[i]==="1"?wide:unit);if(i%2===0)rects+=`<rect x="${x}" y="0" width="${w}" height="${h}"/>`;x+=w;}
+    if(ci<chars.length-1)x+=gap;});
+  return `<svg width="100%" height="${h}" viewBox="0 0 ${x} ${h}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block">${rects}</svg>`;}
+// LCD/screen faults for the Top label — filter the unit's fault list to display-related ones.
+function lcdFaultsOf(r){return (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean)
+  .filter(f=>/screen|lcd|display|pixel|backlight|polari|panel|shade|flicker|lines|touch\s*screen/i.test(f));}
+function lblEsc(s){return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+// Short chip token: Apple "M3 Pro"→"M3P", "M1 Max"→"M1M", "M2 Ultra"→"M2U", "M3"→"M3"; Intel "Core i5"→"i5".
+function chipAbbrev(chip){chip=String(chip||"");
+  let m=chip.match(/M(\d)\s*(Pro|Max|Ultra)?/i);
+  if(m){const t={pro:"P",max:"M",ultra:"U"}[(m[2]||"").toLowerCase()]||"";return "M"+m[1]+t;}
+  let i=chip.match(/i([3579])/i);if(i)return "i"+i[1];
+  return (chip.split(/\s+/).pop()||chip).slice(0,8);}
+// CPU clock (GHz number only) from the speed field, else the chip string ("…@ 1.60GHz"),
+// else the SKU ("…-1.6-…"). Always shown next to the CPU model.
+function fmtGhz(x){const n=parseFloat(x);if(isNaN(n))return "";return n%1===0?n.toFixed(1):String(n);}  // 2→"2.0", 1.60→"1.6"
+function cpuSpeed(r){
+  for(const src of [r.cpu_speed, r.chip]){const m=String(src||"").match(/(\d+\.\d+)/);if(m)return fmtGhz(m[1]);}
+  // SKU clock — decimal ("-1.6-") or the integer segment right after the CPU token ("-I5-2-")
+  const sm=String(r.sku||"").match(/-i[3579]-(\d+(?:\.\d+)?)-/i)||String(r.sku||"").match(/-(\d\.\d+)-/);
+  return sm?fmtGhz(sm[1]):"";}
+// One CPU box. Apple Silicon → "M1P 10C16G 3.2" (chip + CPU/GPU cores + clock); Intel → "i5 1.6".
+function cpuBox(r){const cc=parseInt(r.cpu_cores)||0,gc=parseInt(r.gpu_cores)||0,ab=chipAbbrev(r.chip),sp=cpuSpeed(r);
+  if(gc>0)return `${ab} ${cc||"?"}C${gc}G${sp?" "+sp:""}`;
+  return `${ab}${sp?" "+sp:""}`||"—";}
+function colourShort(c){return (String(c||"").replace(/^space\s+/i,"Sp.").trim())||"—";}
+function labelHTML(r){
+  const chips=[["CPU",cpuBox(r)],["RAM",r.memory?r.memory+"GB":"—"],["SSD",r.storage?r.storage+"GB":"—"],
+    ["BATT",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"—"],["CYCLES",r.batt_c!=null&&r.batt_c!==""?r.batt_c:"—"],
+    ["COLOUR",colourShort(r.colour)]];
+  const faults=(r.faults||"").split(";").map(f=>f.trim()).filter(Boolean);
+  const isPass=r.result==="PASS";
+  const resTxt=isPass?"✓ PASS":(r.result?("✗ "+r.result):"—");
+  const yr=r.year&&!String(r.model||"").includes(String(r.year))?(" · "+r.year):"";  // avoid "(…2020) · 2020"
+  const model=lblEsc((r.model||"")+yr)||"&nbsp;";
+  const right=faults.length
+    ? `<div class="lftitle">⚠ FAULTS (${faults.length})</div><div class="lflist">${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
+    : `<div class="lftitle">RESULT</div><div class="lflist"><div class="lclean">✓ No faults<div class="sub">Clean pass — all checks OK</div></div></div>`;
+  return `<div class="label">
+    <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.tech_disp||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${r.grade||"—"}</span></div>
+    <div class="lsku"><span class="lskutag">SKU</span> ${lblEsc(r.sku||"—")}<span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
+    <div class="lmodel">${model}</div>
+    <div class="lbody">
+      <div class="lleft"><div class="lchips">${chips.map(c=>`<div class="lchip"><div class="ck">${c[0]}</div><div class="cv">${lblEsc(c[1])}</div></div>`).join("")}</div></div>
+      <div class="lright">${right}</div>
+    </div>
+    <div class="lbcwrap"><div class="lbc">${code39svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
+  </div>`;}
+// Top label (LCD) — the second label per unit (goes on the LCD assembly). LCD faults pulled
+// from the record, display grade, PO, and a Code 39 serial barcode. Mirrors the app's Top label.
+function topLabelHTML(r){
+  const lcd=lcdFaultsOf(r);
+  const yr=r.year&&!String(r.model||"").includes(String(r.year))?(" · "+r.year):"";
+  const model=lblEsc((r.model||"")+yr)||"&nbsp;";
+  const faultsBlk=lcd.length
+    ? `<div class="lftitle">LCD FAULTS (${lcd.length})</div><div class="lflist">${lcd.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
+    : `<div class="lftitle">LCD FAULTS</div><div class="lflist"><div class="lfl">—  No LCD faults recorded</div></div>`;
+  return `<div class="label toplabel">
+    <div class="lhead"><div class="lhl"><span class="res">LCD · TOP LABEL</span></div><span class="gr">LCD GRADE ${r.display_grade||"—"}</span></div>
+    <div class="lsku"><span class="lmodeltop">${model}</span><span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
+    <div class="lbody"><div class="lright" style="border-left:0;padding-left:0;flex:1">${faultsBlk}</div></div>
+    <div class="lbcwrap"><div class="lbc">${code39svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
+  </div>`;}
+// DyMo + standard label presets. Each prints ONE label per unit (was spilling across many
+// because the page size didn't match the loaded label). Pick the label you've loaded.
+const LABEL_SIZES=[
+  {id:"dymo99012",n:"DyMo 99012 / 30323 — 89×36mm",w:89,h:36},
+  {id:"dymo11356",n:"DyMo 11356 — 89×41mm",w:89,h:41},
+  {id:"dymo30252",n:"DyMo 30252 Address — 89×28mm",w:89,h:28},
+  {id:"dymo30334",n:"DyMo 30334 — 57×32mm",w:57,h:32},
+  {id:"dymoship",n:"DyMo Shipping 99014 — 101×54mm (landscape — turn the label)",w:101,h:54},
+  {id:"std4x2",n:"Standard 4×2 inch — 102×51mm",w:102,h:51},
+];
+function curLabelSize(){const id=localStorage.getItem("qcLabelSize")||"dymoship";return LABEL_SIZES.find(s=>s.id===id)||LABEL_SIZES.find(s=>s.id==="dymoship")||LABEL_SIZES[0];}
+function fillLabelSizes(){const sel=document.getElementById("labelSize");if(!sel)return;
+  sel.innerHTML=LABEL_SIZES.map(s=>`<option value="${s.id}">${s.n}</option>`).join("");sel.value=curLabelSize().id;}
+function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize();
+  // Print in an ISOLATED iframe containing ONLY the labels — no dashboard layout can
+  // spill onto extra pages, so it's exactly one page per label on any browser.
+  // Vertical safe inset for the printer's non-printable dead zone (~1.5mm top/bottom on DyMo
+  // thermal heads). The label fills the media; padding keeps the barcode/serial off the dead edge.
+  // Typography per the label spec: NO bold anywhere (weight 400), titles/general 9px, faults 8px,
+  // margins removed to a minimal safe inset for the DyMo's ~1.5mm non-printable dead zone.
+  const css=`@page{size:${sz.w}mm ${sz.h}mm;margin:0}
+    *{box-sizing:border-box;font-weight:400}html,body{margin:0;padding:0}
+    .label{width:${sz.w}mm;height:${sz.h}mm;padding:1mm 1.2mm;font-family:-apple-system,Arial,sans-serif;color:#000;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
+    .label:last-child{page-break-after:auto}
+    .lhead{display:flex;align-items:center;justify-content:space-between;border-bottom:1pt solid #000;padding-bottom:.4mm;flex:0 0 auto;gap:2.5mm}
+    .lhl{display:flex;align-items:baseline;gap:2.5mm;min-width:0}
+    .lhead .res{font-size:9px;white-space:nowrap}
+    .lhead .ltech{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lhead .gr{font-size:9px;border:1pt solid #000;border-radius:1.2mm;padding:.3mm 2mm;white-space:nowrap;flex:0 0 auto}
+    .lsku{font-family:ui-monospace,Menlo,monospace;font-size:9px;white-space:nowrap;overflow:hidden;margin-top:.6mm;flex:0 0 auto;display:flex;gap:3mm;align-items:baseline}
+    .lskutag{font-family:-apple-system,Arial,sans-serif;color:#777;margin-right:1.5pt}
+    .lpo{margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+    .lmodel,.lmodeltop{font-size:9px;white-space:nowrap;overflow:hidden;margin-top:.4mm;flex:0 0 auto}
+    .lmodeltop{min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .lbody{flex:1 1 auto;display:flex;gap:2.4mm;min-height:0;margin-top:.7mm}
+    .lleft{flex:1.7;min-width:0;display:flex;flex-direction:column}
+    .lright{flex:1.08;min-width:0;border-left:1pt solid #000;padding-left:2mm;display:flex;flex-direction:column;overflow:hidden}
+    .lchips{display:grid;grid-template-columns:repeat(3,1fr);gap:1mm}
+    .lchip{border:.8pt solid #000;border-radius:1.1mm;padding:.6mm 0;text-align:center;overflow:hidden}
+    .lchip .ck{font-size:7px;color:#555}
+    .lchip .cv{font-size:9px;white-space:nowrap;display:inline-block;max-width:100%}
+    .lftitle{font-size:8px;color:#555;letter-spacing:.3pt;margin-bottom:.3mm;flex:0 0 auto}
+    .lflist{flex:1 1 auto;min-height:0;overflow:hidden}
+    .lfl{font-size:8px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lclean{font-size:9px;margin-top:.2mm}
+    .lclean .sub{font-size:8px;color:#555;margin-top:.5mm}
+    .lbcwrap{flex:0 0 auto;margin-top:.6mm;border-top:.5pt solid #bbb;padding-top:.6mm}
+    .lbc{display:block;width:100%}
+    .lbc svg{display:block;width:100%;height:12mm}
+    .lsn{text-align:center;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:1pt;margin-top:.4mm}`;
+  let f=document.getElementById("printFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="printFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);
+  const doc=f.contentWindow.document;
+  // ONE label per unit. Copy count is the print station's setting — emitting a second
+  // copy here multiplies against it (station set to 1 printed 2, set to 2 printed 4).
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>${css}</style></head><body>${rows.map(r=>labelHTML(r)).join("")}</body></html>`);doc.close();
+  setTimeout(()=>{try{
+    // Auto-shrink ONLY a value that's genuinely too wide (e.g. "M1M 10C24G 3.2"). The value
+    // is display:inline-block, so offsetWidth = the actual text width — short values (8GB, 89%)
+    // measure narrow and are left at full size.
+    const idoc=f.contentWindow.document, iwin=f.contentWindow;
+    idoc.querySelectorAll(".lchip").forEach(box=>{const el=box.querySelector(".cv");if(!el)return;
+      const max=box.clientWidth-3;let fs=parseFloat(iwin.getComputedStyle(el).fontSize)||11,g=0;
+      while(el.offsetWidth>max&&fs>4&&g++<40){fs-=0.3;el.style.fontSize=fs+"px";}});
+    // A too-long SKU / model shrinks to fit ONE line (never wraps/pushes the rest of the label off).
+    idoc.querySelectorAll(".lsku,.lmodel").forEach(el=>{let fs=parseFloat(iwin.getComputedStyle(el).fontSize)||7.5,g=0;
+      while(el.scrollWidth>el.clientWidth+1&&fs>4&&g++<40){fs-=0.3;el.style.fontSize=fs+"px";}});
+    // Faults list auto-fits its column — shrink the lines until EVERY fault shows (no truncation/+N more).
+    idoc.querySelectorAll(".lflist").forEach(col=>{const fls=[...col.querySelectorAll(".lfl")];if(!fls.length)return;
+      let fs=parseFloat(iwin.getComputedStyle(fls[0]).fontSize)||9,g=0;
+      while(col.scrollHeight>col.clientHeight+0.5&&fs>4&&g++<60){fs-=0.2;fls.forEach(e=>e.style.fontSize=fs+"px");}});
+    // FINAL FIT — nothing may overflow the label's printable height, or the bottom element (the
+    // barcode + serial) gets clipped. This is the bottom cut-off on the taller media (99014
+    // 101×54, 4×2 102×51). If a label still overflows, shrink its barcode (the one fixed-height
+    // block) until everything fits. Floor keeps the barcode tall enough to stay scannable.
+    idoc.querySelectorAll(".label").forEach(lab=>{const bc=lab.querySelector(".lbc svg");if(!bc)return;
+      let g=0;while(lab.scrollHeight>lab.clientHeight+0.5&&g++<40){
+        const h=parseFloat(iwin.getComputedStyle(bc).height)||45;if(h<=26)break;bc.style.height=(h-2)+"px";}});
+    iwin.focus();iwin.print();
+  }catch(e){alert("Print failed: "+e.message);}},300);}
+function printLabel(){if(CURRENT)printLabels([CURRENT]);}
+
+// ---- Certificate of Quality (A4) — matches the app. Passed units only. ------
+const CERT_CATEGORIES=["Display","Camera","Light sensor","Keyboard","Trackpad","Touch ID","Wi-Fi",
+  "Bluetooth","Speakers","Microphone","Ports & USB","Battery","Thermals","RAM","SSD","Performance","Charger","Cosmetics"];
+function certVerifyURL(r){var u="https://yesagain100.github.io/qc-records/?verify="+encodeURIComponent(r.serial||"");
+  if(r.client_uuid)u+="&t="+encodeURIComponent(r.client_uuid);  // pin the QR to THIS exact test
+  return u;}
+function certId(r){
+  // Stable per-record ref: YC-<serial[:10]>-<yyMMdd-HHmm> from the record's test time.
+  // Parse a real Date (tested_local is station wall-clock; tested_at is ISO) — the old
+  // digit-slice produced garbage on the 'd MMM yyyy HH:mm' fallback format.
+  const dt=new Date(r.tested_local||r.tested_at||"");let suf="";
+  if(!isNaN(dt.getTime())){const p=n=>String(n).padStart(2,"0");
+    suf=`${p(dt.getFullYear()%100)}${p(dt.getMonth()+1)}${p(dt.getDate())}-${p(dt.getHours())}${p(dt.getMinutes())}`;}
+  return "YC-"+String(r.serial||"").replace(/\s/g,"").slice(0,10)+(suf?"-"+suf:"");}
+function certQRSvg(url){try{const q=qrcode(0,'M');q.addData(url);q.make();return q.createSvgTag({cellSize:3,margin:0,scalable:true});}catch(e){return "";}}
+function certHTML(r){
+  const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
+  const mid=(r._raw&&r._raw.snapshot&&r._raw.snapshot.model_identifier)||"";
+  const cpu=r.cpu_cores?(r.cpu_cores+"-core"):"";
+  const gpu=r.gpu_cores?(r.gpu_cores+"-core GPU"):"";
+  const spec=[["Model",r.model],["Model ID",mid],["Year",r.year],["Chip",r.chip],["CPU",cpu],["GPU",gpu],
+    ["Memory",r.memory?r.memory+" GB":""],["Storage",r.storage?r.storage+" GB":""],
+    ["Colour",r.colour],["SKU",r.sku]].filter(x=>x[1]);
+  // Safety: the certificate can ONLY certify a genuine PASS. Even if a caller bypasses the
+  // printCert gate, certHTML itself refuses to render a "PASSED" document for a non-pass record.
+  if(r.result!=="PASS") return `<div class="cert" style="text-align:center;padding:40px"><img class="clogo" src="logo_orange.png" style="height:40px;filter:brightness(0)"><h2 style="color:#d6453d">No certificate — this unit did not pass</h2><p style="color:#5b6b82">Serial ${lblEsc(r.serial||"—")} · result ${lblEsc(r.result||"—")}. Certificates are issued for passed units only.</p></div>`;
+  const when=(r.tested_local||fmtTested(r)||"");
+  const rowsHTML=spec.map((x,i)=>`<div class="crow${i===spec.length-1?" last":""}"><span class="ck">${lblEsc(x[0])}</span><span class="cv">${lblEsc(x[1])}</span></div>`).join("");
+  const cats=CERT_CATEGORIES.map(c=>`<div class="ccat"><span class="cchk">✓</span>${lblEsc(c)}</div>`).join("");
+  const batt=r.batt_h!=null?`<div class="cbatt"><div class="cbt">BATTERY HEALTH</div><div class="cbv">${Math.min(100,r.batt_h)}%</div><div class="cbc">${r.batt_c!=null?r.batt_c+" cycles":""}${r.batt_cond?"  ·  "+lblEsc(r.batt_cond):""}</div></div>`:"";
+  return `<div class="cert">
+    <div class="chead"><img class="clogo" src="logo_orange.png" alt="YesAgain"><div class="ctitle">Certificate of Quality</div><div class="csub">Yes Check · independent QC inspection</div></div>
+    <div class="crule"></div>
+    <div class="cpass"><div class="cpl"><span class="cseal">✓</span><div><div class="cpassbig">PASSED</div><div class="cpasssub">Meets the Yes Check QC standard</div></div></div>
+      <div class="cgrade"><div class="cgbadge">GRADE ${lblEsc(r.grade||"—")}</div><div class="cgsub">${lblEsc(gl)}</div></div></div>
+    <div class="cbanner"><div class="cbmodel">${lblEsc(r.model||"—")}</div><div class="cbserial">Serial&nbsp;&nbsp;${lblEsc(r.serial||"—")}</div></div>
+    <div class="cmain"><div class="cspec"><div class="cslabel">DEVICE SPECIFICATION</div>${rowsHTML}</div>
+      <div class="cside">${batt}<div class="cqr">${certQRSvg(certVerifyURL(r))}<div class="cqrt">Scan to verify online</div><div class="cqru">yesagain100.github.io/qc-records</div></div></div></div>
+    <div class="cchecks"><div class="cslabel">QUALITY INSPECTION</div>
+      <div style="font-size:12px;font-weight:600;margin-top:4px">✓ Passed the full Yes Check QC inspection</div>
+      <div style="font-size:9.5px;color:#5b6b82;margin-top:3px;line-height:1.5">All applicable checks for this device — hardware &amp; system, display, keyboard, trackpad, audio, camera &amp; sensors, wireless, ports, battery, thermals, storage, performance and cosmetics.</div></div>
+    <div class="cfoot"><div class="cfl"><div><b>Certificate</b>&nbsp; ${lblEsc(certId(r))}</div><div>Issued&nbsp; ${lblEsc(when)}</div><div>Technician&nbsp; ${lblEsc(r.tech_disp||"—")}</div></div>
+      <div class="cbc2">${code128svg(r.serial,1.1,44)}<div class="cbcs">${lblEsc(r.serial||"")}</div></div></div>
+    <div class="ccopy">© YesAgain Group · Yes Check QC. Reflects the device's condition at the time of inspection.</div>
+  </div>`;
+}
+function printCert(r){
+  r=r||CURRENT; if(!r)return;
+  if(r.result!=="PASS"){alert("Certificates are issued for PASSED units only. This unit is "+(r.result||"not passed")+".");return;}
+  const css=`@page{size:A4;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
+    .cert{width:100%;border:3px solid #fbb03b;border-radius:6px;padding:22px 26px}
+    .chead{text-align:center}.clogo{height:42px;filter:brightness(0)}
+    .ctitle{font-size:22px;font-weight:800;margin-top:6px}.csub{font-size:11px;color:#5b6b82}
+    .crule{height:3px;background:#fbb03b;margin:12px 0 14px}
+    .cpass{display:flex;align-items:center;justify-content:space-between}
+    .cpl{display:flex;align-items:center;gap:11px}.cseal{width:34px;height:34px;border-radius:50%;background:#1d9e75;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;font-weight:900}
+    .cpassbig{font-size:26px;font-weight:900;color:#1d9e75;line-height:1}.cpasssub{font-size:10px;color:#5b6b82}
+    .cgrade{text-align:center}.cgbadge{font-size:19px;font-weight:900;border:2px solid #112747;border-radius:8px;padding:5px 14px}.cgsub{font-size:9px;color:#5b6b82;margin-top:2px}
+    .cbanner{background:#f5f6f8;border-radius:8px;text-align:center;padding:10px;margin:14px 0}
+    .cbmodel{font-size:16px;font-weight:800}.cbserial{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#5b6b82}
+    .cmain{display:flex;gap:18px;margin-bottom:14px}
+    .cspec{flex:1}.cslabel{font-size:10px;font-weight:800;color:#5b6b82;letter-spacing:.4px;margin-bottom:5px}
+    .crow{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e6e9ef;font-size:11.5px}.crow.last{border-bottom:0}
+    .ck{color:#5b6b82}.cv{font-weight:700;text-align:right}
+    .cside{width:190px}
+    .cbatt{border:1px solid #d4ecdf;background:#f3faf6;border-radius:10px;text-align:center;padding:10px;margin-bottom:11px}
+    .cbt{font-size:9px;font-weight:800;color:#5b6b82;letter-spacing:.4px}.cbv{font-size:30px;font-weight:900;color:#1d9e75;line-height:1.1}.cbc{font-size:11px;color:#5b6b82}
+    .cqr{text-align:center;border:1px solid #e6e9ef;border-radius:10px;padding:10px}.cqr svg{width:104px;height:104px;display:block;margin:0 auto}
+    .cqrt{font-size:9px;font-weight:800;margin-top:3px}.cqru{font-size:7px;color:#5b6b82}
+    .cchecks{border:1px solid #e6e9ef;border-radius:8px;padding:11px;margin-bottom:14px}
+    .ccats{display:grid;grid-template-columns:repeat(3,1fr);gap:3px 10px;margin-top:5px}
+    .ccat{font-size:10.5px;display:flex;align-items:center;gap:5px}.cchk{color:#1d9e75;font-weight:900}
+    .cfoot{display:flex;justify-content:space-between;align-items:flex-end}
+    .cfl{font-size:10px;color:#5b6b82;line-height:1.5}.cfl b{color:#112747}
+    .cbc2{text-align:right}.cbc2 svg{width:210px;height:44px;display:block}.cbcs{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:1px;text-align:center}
+    .ccopy{text-align:center;font-size:8px;color:#8a97ad;margin-top:12px}`;
+  let f=document.getElementById("certFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="certFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Certificate</title><style>${css}</style></head><body>${certHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+// ---- Full component test certificate (A4) ---------------------------------
+// Every check performed on the device with its real result — the breakdown customer
+// service shares per device. Unlike the Certificate of Quality this is issued for ANY
+// result: the component detail matters most when a unit failed.
+function testCertHTML(r){
+  const snap=(r._raw&&r._raw.snapshot)||r.snapshot||{};
+  const c=YCCertificate.certificateRows(snap);
+  const when=(r.tested_local||fmtTested(r)||"");
+  const STATE={pass:["PASS","#1d9e75"],fail:["FAIL","#c0392b"],
+               na:["N/A","#8a97ad"],untested:["NOT TESTED","#c47f17"],
+               unknown:["UNKNOWN","#8a97ad"]};
+  const kv=(k,v)=>v?`<div class="trow"><span class="tk">${lblEsc(k)}</span><span class="tv">${lblEsc(v)}</span></div>`:"";
+  const groups=c.groups.map(g=>`<div class="tgrp"><div class="tgh">${lblEsc(g.name)}</div>`
+    + g.items.map(i=>{const st=STATE[i.state]||STATE.unknown;
+        return `<div class="titem"><span>${lblEsc(i.label)}</span>`
+             + `<b style="color:${st[1]}">${st[0]}</b></div>`;}).join("")
+    + `</div>`).join("");
+  const auto=c.automated.length?`<table class="tauto"><thead><tr><th>Automated test</th><th>Executed</th><th>Engine verdict</th><th>Readings</th></tr></thead><tbody>`
+    + c.automated.map(a=>`<tr><td>${lblEsc(a.name)}</td>
+        <td style="font-weight:700;color:${a.ran?"#1d9e75":"#c0392b"}">${a.ran?"RUN — "+lblEsc(a.duration):"NOT RUN"}</td>
+        <td>${lblEsc(a.verdict||"—")}</td>
+        <td class="tband">${a.bands.map(b=>lblEsc((b.label||"")+" "+(b.value||"")+(b.unit||""))).join(" · ")||"—"}</td></tr>`).join("")
+    + `</tbody></table>`:"";
+  const missing=c.hasChecklist?"":`<div class="tnote">Per-item detail was not captured for this test — this record predates component-level reporting. The automated results below are the full extent of what was recorded.</div>`;
+  return `<div class="tcert">
+    <div class="chead"><img class="clogo" src="logo_orange.png" alt="YesAgain"><div class="ctitle">Component Test Certificate</div><div class="csub">Yes Check · full component-by-component inspection record</div></div>
+    <div class="crule"></div>
+    <div class="tsum">
+      <div><div class="tsl">DEVICE</div><div class="tsv">${lblEsc(r.model||"—")}</div><div class="tss">Serial ${lblEsc(r.serial||"—")}</div></div>
+      <div><div class="tsl">RESULT</div><div class="tsv" style="color:${r.result==="PASS"?"#1d9e75":"#c0392b"}">${lblEsc(r.result||"—")}</div><div class="tss">Overall grade ${lblEsc(r.grade||"—")}</div></div>
+      <div><div class="tsl">CHECKS</div><div class="tsv">${c.counts.pass}/${c.counts.total}</div><div class="tss">${c.counts.fail} failed · ${c.counts.na} N/A · ${c.counts.untested} not tested</div></div>
+    </div>
+    <div class="tmeta">
+      ${kv("Model ID",snap.model_identifier)}${kv("Chip",r.chip)}${kv("Memory",r.memory?r.memory+" GB":"")}
+      ${kv("Storage",r.storage?r.storage+" GB":"")}${kv("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
+      ${kv("Battery",r.batt_h!=null?Math.min(100,r.batt_h)+"%"+(r.batt_c!=null?" · "+r.batt_c+" cycles":""):"")}
+      ${kv("Tested",when)}${kv("Technician",r.tech_disp)}${kv("Warehouse",r.warehouse)}${kv("Group",r.department)}
+    </div>
+    ${missing}
+    <div class="tgrid">${groups}</div>
+    ${auto}
+    ${r.faults?`<div class="tfaults"><b>Faults recorded:</b> ${lblEsc(r.faults)}</div>`:""}
+    <div class="cfoot"><div class="cfl"><div><b>Reference</b>&nbsp; ${lblEsc(certId(r))}-T</div><div>Issued&nbsp; ${lblEsc(when)}</div></div>
+      <div class="cqr">${certQRSvg(certVerifyURL(r))}</div></div>
+    <div class="ccopy">© YesAgain Group · Yes Check QC. Records the device's condition and the checks performed at the time of inspection.</div>
+  </div>`;
+}
+function printTestCert(r){
+  r=r||CURRENT; if(!r)return;
+  const css=`@page{size:A4;margin:11mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
+    .tcert{width:100%;border:3px solid #112747;border-radius:6px;padding:18px 22px}
+    .chead{text-align:center}.clogo{height:36px;filter:brightness(0)}
+    .ctitle{font-size:20px;font-weight:800;margin-top:5px}.csub{font-size:10.5px;color:#5b6b82}
+    .crule{height:3px;background:#112747;margin:10px 0 12px}
+    .tsum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+    .tsl{font-size:8.5px;letter-spacing:.6px;color:#8a97ad;font-weight:700}
+    .tsv{font-size:16px;font-weight:800;line-height:1.2}.tss{font-size:9px;color:#5b6b82}
+    .tmeta{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 16px;margin-bottom:10px}
+    .trow{display:flex;justify-content:space-between;border-bottom:.5px solid #e6e9ef;padding:2px 0;font-size:10px}
+    .tk{color:#5b6b82}.tv{font-weight:600}
+    .tnote{background:#fff6e5;border:1px solid #f0d9a8;border-radius:5px;padding:7px 9px;font-size:9.5px;color:#7a5a1a;margin-bottom:10px}
+    .tgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 16px;margin-bottom:10px}
+    .tgrp{break-inside:avoid}
+    .tgh{font-size:9px;font-weight:800;letter-spacing:.6px;color:#8a97ad;border-bottom:1px solid #e6e9ef;padding-bottom:2px;margin-bottom:3px}
+    .titem{display:flex;justify-content:space-between;font-size:10px;padding:1.5px 0}
+    .titem b{font-size:9px}
+    .tauto{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:8px}
+    .tauto th{text-align:left;background:#f5f6f8;padding:3px 5px;font-size:8.5px;letter-spacing:.4px;color:#5b6b82}
+    .tauto td{padding:3px 5px;border-bottom:.5px solid #e6e9ef}
+    .tband{color:#5b6b82}
+    .tfaults{font-size:10px;color:#c0392b;margin-bottom:8px}
+    .cfoot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px}
+    .cfl{font-size:9.5px;color:#5b6b82;line-height:1.5}.cfl b{color:#112747}
+    .cqr svg{width:64px;height:64px}
+    .ccopy{text-align:center;font-size:8px;color:#8a97ad;margin-top:8px}`;
+  let f=document.getElementById("tcertFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="tcertFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Component test certificate</title><style>${css}</style></head><body>${testCertHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
+// Full QC history for one unit (all prior tests on the same serial).
+function histDetailHTML(x){const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  return `<dl class="kv" style="font-size:12px">
+    ${row("Result",escv(x.result_raw||x.result))}${row("Grade",`${escv(x.grade||"—")} (LCD ${escv(x.display_grade||"—")} / Body ${escv(x.body_grade||"—")})`)}
+    ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc"+(x.batt_cond?" · "+escv(x.batt_cond):""):"")}
+    ${row("Storage",x.storage?x.storage+" GB":"")}${row("Performance",escv(x.perf_score))}${row("Department",escv(x.department))}
+    ${row("Faults",x.faults?`<span style="color:var(--bad)">${escv(x.faults)}</span>`:"none")}
+    ${row("Notes",escv(x.notes))}</dl>`;}
+function historyHTML(r){
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(b.tested_at||"")>(a.tested_at||"")?1:-1);
+  if(h.length<=1)return `<div class="sec">History</div><div class="muted" style="font-size:13px">Only this one QC test is on record for this serial.</div>`;
+  return `<div class="sec">History — ${h.length} tests on this unit <span class="muted" style="font-weight:400;text-transform:none">(click a row to expand)</span></div>`+
+    h.map(x=>`<div class="hrow${x.id===r.id?" open":""}">
+      <div class="hsum" onclick="this.parentElement.classList.toggle('open')">
+        <span class="hcar">▸</span>
+        <span style="min-width:150px">${fmtTested(x)}</span>
+        <span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span>
+        <span class="gr ${x.grade}" style="min-width:18px">${x.grade||'—'}</span>
+        <span style="flex:1;min-width:80px">${escv(x.tech_disp)||'—'}</span>
+        <span style="color:var(--bad);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.faults||''}</span>
+      </div>
+      <div class="hdet">${histDetailHTML(x)}</div>
+    </div>`).join("");}
+
+// ---- bulk actions (operate on selected rows, or all filtered rows if none selected) ----
+const SEL=new Set();                                  // selected record ids
+function selRows(){const s=ROWS.filter(r=>SEL.has(r.id));return s.length?s:ROWS;}
+function toggleSel(id,on){on?SEL.add(id):SEL.delete(id);}
+function bulkLabels(){const rows=selRows();if(rows.length>60&&!confirm(`Print ${rows.length} labels?`))return;printLabels(rows);}
+function bulkExport(){const rows=selRows();const keep=ROWS;ROWS=rows;csv();ROWS=keep;}
+function renderBulkMenu(){const n=SEL.size,t=n||ROWS.length,lbl=n?`${n} selected`:`all ${ROWS.length} shown`;
+  document.getElementById("bulkMenu").innerHTML=
+    `<div class="bm-hd">Acts on ${lbl}</div>
+     <div class="bm-i" onclick="bulkLabels();closeBulk()">🖨 Print labels (${t})</div>
+     <div class="bm-i" onclick="bulkExport();closeBulk()">⤓ Export to Excel (${t})</div>
+     ${n?`<div class="bm-i" onclick="SEL.clear();render();renderBulkMenu()">✕ Clear selection</div>`:""}`;}
+function closeBulk(){document.getElementById("bulkMenu").classList.remove("show");}
+
+function csv(){
+  // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
+  // LCD/body grade, CPU+speed, and Apple-Silicon CPU/GPU core counts.
+  const COLS=[["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
+    ["chip","CPU / Chip"],["cpu_speed","CPU speed"],["cpu_cores","CPU cores"],["gpu_cores","GPU cores"],
+    ["memory","RAM (GB)"],["storage","SSD (GB)"],["colour","Colour"],["sku","YesAgain SKU"],["part_number","Part number"],
+    ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
+    ["batt_h","Battery health %"],["batt_c","Battery cycles"],["batt_cond","Battery condition"],
+    ["kbd_layout","Keyboard layout"],["kbd_language","Keyboard language"],["wifi","Wi-Fi SSID"],
+    ["perf_score","Performance"],["photos","Photos"],["technician","Technician"],["technician_username","Tech username"],["warehouse","Warehouse"],["timezone","Timezone"],["app_kind","App (main/legacy)"],["app_build","App build"],["department","Department"],
+    ["lot_id","Lot"],["po","PO"],["supplier","Supplier"],["faults","Faults"],["notes","Notes"]];
+  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const val=(k,r)=>k==="batt_h"&&r.batt_h!=null?Math.min(100,r.batt_h):r[k];
+  const lines=[COLS.map(c=>esc(c[1])).join(",")].concat(ROWS.map(r=>COLS.map(c=>esc(val(c[0],r))).join(",")));
+  // UTF-8 BOM + CRLF so Excel opens it cleanly (incl. Arabic notes)
+  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=`YesAgain QC Records ${new Date().toISOString().slice(0,10)}.csv`;a.click();}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));t.classList.add("on");
+  const v=t.dataset.t;
+  document.getElementById("recordsTab").style.display=v==="records"?"block":"none";
+  document.getElementById("analysisTab").style.display=v==="analysis"?"block":"none";
+  document.getElementById("lotTab").style.display=v==="lot"?"block":"none";
+  if(v==="lot")renderLotReport();});
+loadCols();renderHead();
+document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
+document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
+["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
+
+// ---- login gate (same Yes Check accounts via app_login) ---------------------
+async function rpc(fn,args){const r=await fetch(`${SUPA}/rest/v1/rpc/${fn}`,{method:"POST",
+  headers:{apikey:KEY,Authorization:"Bearer "+KEY,"Content-Type":"application/json"},body:JSON.stringify(args||{})});
+  return r.ok?r.json():null;}
+async function fillLoginUsers(){const u=await rpc("app_login_users",{});
+  if(u&&u.length)document.getElementById("luser").innerHTML=u.map(x=>`<option value="${x.username}">${x.display_name||x.username}</option>`).join("");
+  else document.getElementById("luser").innerHTML='<option value="">No accounts found</option>';}
+async function doLogin(){const u=document.getElementById("luser").value,p=document.getElementById("lpin").value;
+  const e=document.getElementById("lerr");if(!u){e.textContent="No account selected.";return;}e.textContent="Signing in…";
+  const j=await rpc("app_login",{p_username:u,p_pin:p});
+  if(j&&j.ok){sessionStorage.setItem("qcUser",j.display_name||u);enter();}
+  else e.textContent=(j&&j.reason)||"Sign-in failed.";}
+function enter(){document.getElementById("login").style.display="none";
+  document.getElementById("who").textContent="Signed in: "+(sessionStorage.getItem("qcUser")||"");
+  loadCols();renderHead();load();                   // per-login column layout
+  document.getElementById("q").focus();}            // focus the scan/search box for the handheld scanner
+document.getElementById("bulkBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("bulkMenu");
+  const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderBulkMenu();};
+document.addEventListener("click",e=>{if(!e.target.closest("#bulkMenu")&&e.target.id!=="bulkBtn")closeBulk();});
+// ---- PUBLIC verify (the "QC code" on the certificate) -----------------------
+// Scanning the certificate QR opens ?verify=<serial>. That shows a read-only public
+// verification of the unit's QC result — NO login — so a buyer/reseller can confirm it.
+// Uses the same anon key the dashboard already reads audits with (client-side gate only).
+async function verifyView(serial,testId){
+  document.getElementById("login").style.display="none";
+  const ov=document.createElement("div");
+  ov.id="verifyOverlay";
+  ov.style.cssText="position:fixed;inset:0;z-index:200;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;font-family:-apple-system,Arial,sans-serif";
+  ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:460px;width:100%;padding:30px 30px 22px;box-shadow:0 24px 70px rgba(0,0,0,.45);text-align:center"><img src="logo_orange.png" alt="YesAgain" style="height:34px;margin-bottom:6px"><div id="vBody" style="margin-top:8px;color:#112747">Checking…</div><div style="margin-top:18px;font-size:11px;color:#8a97ad">Verified by Yes Check QC · © YesAgain Group</div></div>';
+  document.body.appendChild(ov);
+  const B=document.getElementById("vBody");
+  try{
+    const q=encodeURIComponent(serial);
+    let rows;
+    if(testId){
+      // EXACT-test path: the certificate carries this test's id (client_uuid). Resolve to
+      // THIS test only — so a re-tested serial can never show an older/contradicting result.
+      rows=await (await fetch(`${SUPA}/rest/v1/audits?client_uuid=eq.${encodeURIComponent(testId)}&limit=1`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      if(!Array.isArray(rows)||!rows.length){
+        // The test on this certificate hasn't reached the portal yet (offline queue / sync lag).
+        // Show a NEUTRAL pending state — NEVER an older result for the same serial.
+        B.innerHTML=`<div style="font-size:44px;line-height:1">⏳</div>
+          <h2 style="margin:6px 0 2px;font-size:22px;color:#c77700">Verification pending</h2>
+          <p style="color:#5b6b82;font-size:13px;margin:0 0 8px">This certificate's inspection hasn't finished syncing to the portal yet. Please re-scan in a few minutes.</p>
+          <p style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#8a97ad">Serial ${escv(serial||"—")}</p>`;return;
+      }
+    } else {
+      // Legacy serial-only QR (older certificates): show the latest test for the serial.
+      rows=await (await fetch(`${SUPA}/rest/v1/audits?serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
+        rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      }
+      if(!Array.isArray(rows)||!rows.length){
+        B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
+      }
+    }
+    const r=rows.map(flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
+    const pass=r.result==="PASS";
+    const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
+    const when=(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
+    const specParts=[r.chip,r.memory?r.memory+"GB":"",r.storage?r.storage+"GB SSD":"",r.colour].filter(Boolean);
+    B.innerHTML=`
+      <div style="font-size:46px;line-height:1">${pass?"✅":"⚠️"}</div>
+      <h2 style="margin:6px 0 2px;font-size:22px;color:${pass?"#1d9e75":"#d6453d"}">${pass?"Verified — Passed QC":"On record — did not pass"}</h2>
+      <p style="color:#5b6b82;font-size:13px;margin:0 0 14px">${pass?"This device passed the Yes Check quality-assurance inspection.":"This serial's latest Yes Check result was not a pass."}</p>
+      <div style="text-align:left;border:1px solid #e6e9ef;border-radius:12px;padding:14px 16px">
+        <div style="font-size:16px;font-weight:800">${escv(r.model||"—")}</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#5b6b82;margin-bottom:2px">Serial ${escv(r.serial||"—")}</div>
+        ${specParts.length?`<div style="font-size:12px;color:#5b6b82;margin-bottom:8px">${escv(specParts.join(" · "))}</div>`:""}
+        ${vrow("Result",`<b style="color:${pass?"#1d9e75":"#d6453d"}">${escv(r.result||"—")}</b>`)}
+        ${vrow("Grade",escv((r.grade?("Grade "+r.grade):"—")+(gl?" · "+gl:"")))}
+        ${vrow("Inspected",escv(when||"—")+(r.warehouse?(" · "+escv(r.warehouse)):""))}
+      </div>
+      ${r.batt_h!=null?`<div style="margin-top:12px;padding:12px;background:#f3faf6;border:1px solid #d4ecdf;border-radius:12px">
+        <div style="font-size:11px;font-weight:800;color:#5b6b82;letter-spacing:.4px">BATTERY HEALTH</div>
+        <div style="font-size:30px;font-weight:800;color:#1d9e75;line-height:1.1">${Math.min(100,r.batt_h)}%</div>
+        <div style="font-size:12px;color:#5b6b82">${r.batt_c!=null?r.batt_c+" cycles":""}${r.batt_cond?"  ·  "+escv(r.batt_cond):""}</div>
+      </div>`:""}`;
+  }catch(e){B.innerHTML=`<h2 style="margin:8px 0">Couldn't verify right now</h2><p style="color:#5b6b82;font-size:14px">Please try again shortly. (${escv(e.message)})</p>`;}
+}
+function vrow(k,v){return `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid #eef1f7"><span style="color:#5b6b82;font-size:13px">${k}</span><span style="font-size:13px;font-weight:600;text-align:right">${v}</span></div>`;}
+function escv(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function requireLogin(){if(sessionStorage.getItem("qcUser"))enter();
+  else{fillLoginUsers();document.getElementById("login").style.display="flex";}}
+document.getElementById("lbtn").onclick=doLogin;
+document.getElementById("lpin").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+document.getElementById("logout").onclick=()=>{sessionStorage.removeItem("qcUser");location.reload();};
+// A certificate QR (?verify=<serial>[&t=<test id>]) opens the PUBLIC verification — no login.
+// &t pins it to the EXACT test on that certificate; without it, latest-per-serial. Otherwise the gate.
+{const _sp=new URLSearchParams(location.search); const _v=_sp.get("verify"); const _t=(_sp.get("t")||"").trim();
+ if(_v)verifyView(_v.trim(), _t); else requireLogin();}
+</script>
+</body>
+</html>
