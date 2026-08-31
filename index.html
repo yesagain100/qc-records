@@ -158,6 +158,10 @@
 </div></div>
 <header>
   <img src="logo_white.png" alt="YesAgain" style="height:24px;vertical-align:middle"><h1>Quality-Control Records</h1>
+  <div style="display:flex;background:#0c1d38;border-radius:9px;padding:3px;gap:2px">
+    <button id="devMac" style="border:0;border-radius:7px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;background:var(--orange);color:var(--navy)">💻 Macs</button>
+    <button id="devMobile" style="border:0;border-radius:7px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:#cdd8ea">📱 iPhones</button>
+  </div>
   <div class="sp"></div>
   <span id="who"></span>
   <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ Export to Excel (full)</button>
@@ -168,7 +172,7 @@
   <input id="q" placeholder="Scan the device serial (handheld) or type — the table auto-filters to matches" autocomplete="off">
   <div style="position:relative"><button id="bulkBtn">☰ Bulk actions</button><div id="bulkMenu"></div></div>
 </div>
-<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div><div class="tab" data-t="lot">Lot report</div></div>
+<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div><div class="tab" data-t="lot" id="lotTabBtn">Lot report</div></div>
 
 <div class="wrap">
   <div class="err" id="err"></div>
@@ -194,7 +198,7 @@
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
     <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
-    <button onclick="printLabel()">🖨 Print label</button><button onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><span class="x" onclick="closeModal()">×</span></div>
+    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -322,16 +326,63 @@ const ALLCOLS=[
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
 const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","faults"];
-let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
 const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
-const colW=k=>WIDTHS[k]||DEFAULT_W[k]||110;
-const colKey=()=>"qcCols:"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN
-function loadCols(){ORDER=ALLCOLS.map(c=>c.key);VIS=DEFAULT_VIS.slice();WIDTHS={};
+
+// ---- MOBILE (iPhone/iPad) mode — separate table, columns, and mapping ----------
+// Yes Check Mobile writes to mobile_units/mobile_audits (cloud/mobile_schema.sql) via
+// submit_mobile_audit — its OWN tables, kept apart from the Mac audits table above so an
+// iPhone's fields (IMEI, iOS, activation lock, on-device Probe results) never sit blank
+// next to Mac-only ones (chip, memory, macOS) in the same row.
+let MODE="mac";                                          // "mac" | "mobile"
+function flatMobile(r){const s=r.snapshot||{};
+  const onDevice=r.on_device||s.on_device||{};
+  const failedTests=Object.entries(onDevice).filter(([,v])=>v==="fail").map(([k])=>k);
+  const faults=[r.failed_categories||s.failed_categories,r.defects||s.defects].filter(x=>x&&String(x).trim())
+    .flatMap(x=>String(x).split(";")).map(f=>f.trim()).filter(Boolean);
+  if(!faults.length&&failedTests.length)faults.push(...failedTests);
+  return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
+    model:s.model||r.model||"",imei:r.imei||s.imei||"",udid:r.udid||s.udid||"",
+    ios:r.ios||s.ios||"",storage:num(r.storage_total_gb??s.storage_total_gb),
+    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
+    tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),
+    warehouse:r.entity||s.warehouse||s.entity||"",
+    grade:(r.grade||s.grade||"").toUpperCase(),result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
+    batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
+    activation_locked:(r.activation_locked??s.activation_locked),managed:(r.managed??s.managed),
+    carrier_locked:(r.carrier_locked??s.carrier_locked),blacklisted:(r.blacklisted??s.blacklisted),
+    on_device:onDevice,photos:r.photo_count||s.photo_count||0,notes:r.notes||s.notes||"",
+    client_uuid:r.client_uuid||s.client_uuid||"",faults:[...new Set(faults)].join("; "),_raw:r};}
+const MOBILECOLS=[
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
+  {key:"imei",label:"IMEI",sk:"imei",html:r=>`<td class="mono">${r.imei||"—"}</td>`},
+  {key:"ios",label:"iOS",sk:"ios",html:r=>`<td class="muted">${r.ios||"—"}</td>`},
+  {key:"storage",label:"Storage",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
+  {key:"grade",label:"Grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
+  {key:"activation_locked",label:"Activation Lock",html:r=>`<td>${r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"managed",label:"MDM / Managed",html:r=>`<td>${r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
+];
+const MOBILE_DEFAULT_VIS=["tested_at","serial","model","imei","ios","storage","grade","result","batt","activation_locked","managed","technician","warehouse","faults"];
+const MOBILE_DEFAULT_W={tested_at:140,warehouse:100,serial:120,model:150,imei:150,ios:80,storage:75,grade:70,result:95,batt:115,activation_locked:120,managed:120,technician:110,faults:240};
+
+function curCols(){return MODE==="mobile"?MOBILECOLS:ALLCOLS;}
+function curDefaultVis(){return MODE==="mobile"?MOBILE_DEFAULT_VIS:DEFAULT_VIS;}
+function curDefaultW(){return MODE==="mobile"?MOBILE_DEFAULT_W:DEFAULT_W;}
+let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
+const colW=k=>WIDTHS[k]||curDefaultW()[k]||110;
+const colKey=()=>"qcCols:"+MODE+":"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN, PER MODE
+function loadCols(){const cols=curCols();ORDER=cols.map(c=>c.key);VIS=curDefaultVis().slice();WIDTHS={};
   try{const s=JSON.parse(localStorage.getItem(colKey())||"null");
-    if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
-      VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
+    if(s&&s.order&&s.visible){ORDER=cols.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
+      VIS=s.visible.filter(k=>cols.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
 function saveCols(){localStorage.setItem(colKey(),JSON.stringify({order:ORDER,visible:VIS,widths:WIDTHS}));}
-function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
+function visCols(){const cols=curCols();return ORDER.filter(k=>VIS.includes(k)).map(k=>cols.find(c=>c.key===k)).filter(Boolean);}
 function tblWidth(){return 70+visCols().reduce((s,c)=>s+colW(c.key),0);}
 function renderHead(){const cols=visCols();
   document.getElementById("tbl").style.width=tblWidth()+"px";
@@ -352,7 +403,8 @@ function renderHead(){const cols=visCols();
   const sa=document.getElementById("selAll");sa.onclick=e=>{e.stopPropagation();if(sa.checked)ROWS.forEach(r=>SEL.add(r.id));else SEL.clear();render();};}
 let dragK=null;
 function renderColMgr(){const m=document.getElementById("colMgr");
-  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=ALLCOLS.find(x=>x.key===k);
+  const cols=curCols();
+  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=cols.find(x=>x.key===k);
     return `<div class="ci" draggable="true" data-k="${k}"><span class="gw">⠿</span><input type="checkbox" ${VIS.includes(k)?"checked":""}> ${c.label}</div>`;}).join("");
   m.querySelectorAll(".ci").forEach(el=>{const k=el.dataset.k;
     el.querySelector("input").onchange=e=>{if(e.target.checked){if(!VIS.includes(k))VIS.push(k);}else VIS=VIS.filter(x=>x!==k);saveCols();renderHead();render();};
@@ -362,14 +414,22 @@ function renderColMgr(){const m=document.getElementById("colMgr");
     el.ondrop=e=>{e.preventDefault();el.classList.remove("dragover");if(!dragK||dragK===k)return;
       const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
 
+let loadGen=0;   // request-generation guard — see below
 async function load(){
   document.getElementById("err").style.display="none";
+  // Stamp this call's mode + generation BEFORE any await. A mode switch mid-fetch (or a
+  // rapid double-toggle) bumps loadGen, so a slower, now-stale request's response can
+  // never overwrite RAW after a newer one has already landed — checked right before the
+  // RAW= assignment below (proven live: without this guard a slow Mac page could clobber
+  // a fast iPhone fetch that started after it, silently showing the wrong dataset).
+  const gen=++loadGen, wantMode=MODE;
   try{
     // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
     // through with limit/offset until a short page signals the end. Works at any table size.
+    const table=wantMode==="mobile"?"mobile_audits":"audits";
     const PAGE=1000; let all=[], offset=0;
     for(;;){
-      const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=${PAGE}&offset=${offset}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      const res=await fetch(`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc&limit=${PAGE}&offset=${offset}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
       if(!res.ok)throw new Error("HTTP "+res.status);
       const batch=await res.json();
       all=all.concat(batch);
@@ -377,8 +437,11 @@ async function load(){
       offset+=PAGE;
       if(offset>5000000) break;             // hard safety stop
     }
-    RAW=all.map(flat);fillTechs();render();
-  }catch(e){const el=document.getElementById("err");el.style.display="block";
+    if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
+    RAW=all.map(wantMode==="mobile"?flatMobile:flat);fillTechs();render();
+  }catch(e){
+    if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
+    const el=document.getElementById("err");el.style.display="block";
     el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
 }
@@ -402,7 +465,7 @@ function current(){
     if(fw&&regionGroup(r)!==fw)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
-    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku,r.imei].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
   // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
   if(document.getElementById("uniqSerial").checked){
@@ -582,6 +645,33 @@ function openModal(i){openRowObj(ROWS[i]);}
 function openRowObj(r){if(!r)return;CURRENT=r;
   document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
   const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  // Phone printing (labels/certificates sized for the Mac's spec fields) isn't built yet —
+  // hide those controls in mobile mode rather than print something that doesn't fit an iPhone.
+  document.getElementById("printLabelBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printCertBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("labelSize").style.display=MODE==="mobile"?"none":"";
+  if(MODE==="mobile"){
+    const onDeviceRows=Object.entries(r.on_device||{}).map(([k,v])=>
+      `<tr><td>${escv(k)}</td><td style="font-weight:700;color:${v==='pass'?'var(--ok)':v==='fail'?'var(--bad)':'var(--muted)'}">${escv(String(v).toUpperCase())}</td></tr>`).join("");
+    document.getElementById("mBody").innerHTML=`
+      <dl class="kv">
+        ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
+        ${row("Grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
+        ${row("Tested",escv(fmtTested(r)))}${row("Technician",escv(r.tech_disp))}${row("Warehouse",escv(r.warehouse))}</dl>
+      <div class="sec">Specification</div><dl class="kv">
+        ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("IMEI",escv(r.imei))}${row("UDID",escv(r.udid))}
+        ${row("iOS",escv(r.ios))}${row("Storage",r.storage?r.storage+" GB":"")}</dl>
+      <div class="sec">Battery &amp; locks</div><dl class="kv">
+        ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
+        ${row("Activation Lock",r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"")}
+        ${row("MDM / Managed",r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"")}
+        ${row("Carrier lock",r.carrier_locked===true?"LOCKED":r.carrier_locked===false?"clean":"")}
+        ${row("Blacklist",r.blacklisted===true?"BLACKLISTED":r.blacklisted===false?"clean":"")}</dl>
+      ${onDeviceRows?`<div class="sec">On-device tests (Probe)</div><table style="font-size:12px"><tbody>${onDeviceRows}</tbody></table>`:""}
+      ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
+      ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
+      ${historyHTML(r)}`;
+  } else {
   document.getElementById("mBody").innerHTML=`
     <dl class="kv">
       ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
@@ -605,6 +695,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
     ${historyHTML(r)}`;
   fillLabelSizes();
   loadWipeStatus(r.serial);
+  }
   document.getElementById("modal").classList.add("show");}
 /* Test-execution accountability: did the tech actually RUN each automated /
    performance test, and for how long? Durations are recorded by the engine —
@@ -967,7 +1058,12 @@ function closeBulk(){document.getElementById("bulkMenu").classList.remove("show"
 function csv(){
   // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
   // LCD/body grade, CPU+speed, and Apple-Silicon CPU/GPU core counts.
-  const COLS=[["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
+  const COLS=MODE==="mobile"?[["tested_at","Tested"],["serial","Serial"],["model","Model"],
+    ["imei","IMEI"],["udid","UDID"],["ios","iOS"],["storage","Storage (GB)"],["grade","Grade"],["result","Result"],
+    ["batt_h","Battery health %"],["batt_c","Battery cycles"],
+    ["activation_locked","Activation Lock"],["managed","MDM / Managed"],["carrier_locked","Carrier locked"],["blacklisted","Blacklisted"],
+    ["technician","Technician"],["warehouse","Warehouse"],["faults","Faults"],["notes","Notes"]]:
+   [["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
     ["chip","CPU / Chip"],["cpu_speed","CPU speed"],["cpu_cores","CPU cores"],["gpu_cores","GPU cores"],
     ["memory","RAM (GB)"],["storage","SSD (GB)"],["colour","Colour"],["sku","YesAgain SKU"],["part_number","Part number"],
     ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
@@ -988,6 +1084,21 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelect
   document.getElementById("analysisTab").style.display=v==="analysis"?"block":"none";
   document.getElementById("lotTab").style.display=v==="lot"?"block":"none";
   if(v==="lot")renderLotReport();});
+// ---- device-type toggle: Macs (audits) | iPhones (mobile_audits) — separate table,
+// columns and record shape, same dashboard/login. Lot report doesn't apply to phone QC
+// yet (no lot/PO/supplier tracked), so it's hidden rather than shown permanently empty.
+function setMode(m){if(MODE===m)return;MODE=m;
+  document.getElementById("devMac").style.background=m==="mac"?"var(--orange)":"transparent";
+  document.getElementById("devMac").style.color=m==="mac"?"var(--navy)":"#cdd8ea";
+  document.getElementById("devMobile").style.background=m==="mobile"?"var(--orange)":"transparent";
+  document.getElementById("devMobile").style.color=m==="mobile"?"var(--navy)":"#cdd8ea";
+  document.getElementById("lotTabBtn").style.display=m==="mobile"?"none":"";
+  if(m==="mobile"&&document.getElementById("lotTabBtn").classList.contains("on")){
+    document.querySelector('.tab[data-t="records"]').click();}
+  SEL.clear();LOT_SEL="";
+  loadCols();renderHead();load();}
+document.getElementById("devMac").onclick=()=>setMode("mac");
+document.getElementById("devMobile").onclick=()=>setMode("mobile");
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
