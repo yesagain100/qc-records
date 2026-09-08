@@ -703,6 +703,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
     <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
     <div id="wipeSec"></div>
     ${testExecHTML(r)}
+    ${interactiveExecHTML(r)}
     ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
     ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
     ${historyHTML(r)}`;
@@ -735,6 +736,40 @@ function testExecHTML(r){
     <table style="font-size:12px"><thead><tr><th>Test</th><th>Executed</th><th>Engine verdict</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div class="muted" style="font-size:11px;margin-top:4px">Run lengths recorded by the engine — not entered by the technician.</div>`;
+}
+/* Interactive tests (ports, camera, trackpad, audio) don't have a ran/duration_s/
+   verdict shape like the automated tests above — they're simple recorded values
+   from a guided on-screen check, not a timed background run — so they never
+   appeared in "Proof of run" above and were otherwise invisible in this modal.
+   Shown honestly: a field left blank by the technician (e.g. mic/speakers not
+   completed) reads as "Not recorded", never silently blank or defaulted to pass. */
+function interactiveExecHTML(r){
+  const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
+  if(!d) return "";
+  const v=(x)=>(x===null||x===undefined||x==="")?`<span class="muted">Not recorded</span>`:escv(x);
+  const rows=[];
+  if(d.ports){
+    const p=d.ports;
+    const parts=[`USB-C/TB3: ${p.usbc>0?p.usbc+" verified":v(null)}`];
+    if(p.headphone!=null)parts.push(`Headphone: ${p.headphone?"verified":"absent"}`);
+    if(p.hdmi)parts.push("HDMI: verified");
+    if(p.sd)parts.push("SD: verified");
+    if(p.magsafe)parts.push("MagSafe: verified");
+    rows.push(["Ports & USB",parts.join(" · ")]);
+  }
+  if(d.camera)rows.push(["Camera",d.camera.sharpness!=null?`Sharpness ${Number(d.camera.sharpness).toFixed(1)} · ${escv(d.camera.resolution||"—")} · Brightness ${d.camera.brightness_pct!=null?Number(d.camera.brightness_pct).toFixed(0)+"%":"—"}`:v(null)]);
+  if(d.trackpad)rows.push(["Trackpad",d.trackpad.zones!=null?`${d.trackpad.zones} zones · ${d.trackpad.gestures??0} gestures · ${d.trackpad.defects??0} defects`:v(null)]);
+  if(d.audio){
+    const a=d.audio;
+    rows.push(["Audio — Microphone",v(a.mic)]);
+    rows.push(["Audio — Speakers",v(a.speakers)]);
+    if(a.rub_buzz_l||a.rub_buzz_r)rows.push(["Audio — Rub & buzz",`L: ${v(a.rub_buzz_l)} · R: ${v(a.rub_buzz_r)}`]);
+  }
+  if(!rows.length) return "";
+  const trs=rows.map(([name,val])=>`<tr><td style="width:38%">${escv(name)}</td><td>${val}</td></tr>`).join("");
+  return `<div class="sec">Interactive tests</div>
+    <table style="font-size:12px"><tbody>${trs}</tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:4px">Recorded by the guided on-screen check, not a timed background run — a blank field means it wasn't completed on this test, not that it failed.</div>`;
 }
 /* Data-wipe certification status — read from the wipe_certificate_status view
    (single source of truth). HONESTY RULE: an initiated-only certificate never
