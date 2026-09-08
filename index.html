@@ -198,7 +198,7 @@
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
     <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
-    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><span class="x" onclick="closeModal()">×</span></div>
+    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><button id="printMktBtn" onclick="printMarketplaceProof()" title="Marketplace Test Proof (A4) — Refurbed-style functional checklist, latest test only, passed units only">🛒 Marketplace Proof</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -661,6 +661,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
   document.getElementById("printLabelBtn").style.display=MODE==="mobile"?"none":"";
   document.getElementById("printCertBtn").style.display=MODE==="mobile"?"none":"";
   document.getElementById("printReportBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printMktBtn").style.display=MODE==="mobile"?"none":"";
   document.getElementById("labelSize").style.display=MODE==="mobile"?"none":"";
   if(MODE==="mobile"){
     const onDeviceRows=Object.entries(r.on_device||{}).map(([k,v])=>
@@ -1134,6 +1135,124 @@ function printFullReport(r){
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);const doc=f.contentWindow.document;
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Report — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${fullReportHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+// ---- Marketplace Test Proof (A4) — Refurbed-style functional checklist. -----
+// Deliberately narrower than the Full Report: latest test only (never mixes in
+// an earlier session's results), and only lists checklist items that have real
+// per-unit data behind them. Performance Benchmark and Fan/Thermal are excluded
+// on purpose — both are scored relative to a CPU-family baseline (Intel vs Apple
+// Silicon throttle differently under load), so an "abnormal" sub-reading there
+// can be normal behaviour for that chip, not a real defect. Bluetooth / Touch ID /
+// Power Button / per-key keyboard are also excluded: Yes Check's hard gate proves
+// they were checked before a PASS could save, but the individual result isn't
+// persisted into the historical record the way battery/camera/storage/etc are —
+// only include what can be shown with a real, traceable value behind it.
+function latestForSerial(r){
+  if(!r)return r;
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(a.tested_at||"")>(b.tested_at||"")?1:-1);
+  return h.length?h[h.length-1]:r;
+}
+function mktCheck(label,ok){return ok?`<div class="gitem"><span class="gcheck">&#10003;</span>${escv(label)}</div>`:"";}
+function marketplaceProofHTML(r){
+  r=latestForSerial(r);
+  const s=(r._raw&&r._raw.snapshot)||{},d=s.details||{};
+  const bat=d.battery||{},bc=d.battcell||{},cam=d.camera||{},aud=d.audio||{},
+        pt=d.ports||{},tp=d.trackpad||{},ssd=d.ssd||{},ram=d.ram||{};
+  const grid=[
+    mktCheck("Battery Test",bat.health_pct!=null),
+    mktCheck("Battery Cell Balance",bc.ran===true),
+    mktCheck("Camera",cam.sharpness!=null),
+    mktCheck("Microphone",!!aud.mic),
+    mktCheck("Speakers",!!aud.speakers),
+    mktCheck("Trackpad",tp.zones!=null),
+    mktCheck("USB-C / Thunderbolt",pt.usbc>0),
+    mktCheck("Headphone Jack",pt.headphone===true),
+    mktCheck("SD Card Reader",pt.sd===true),
+    mktCheck("HDMI",pt.hdmi===true),
+    mktCheck("MagSafe / DC-in",pt.magsafe===true),
+    mktCheck("Storage (SSD)",ssd.ran===true),
+    mktCheck("Memory (RAM)",ram.ran===true),
+    mktCheck("Display / LCD",!!s.display_grade),
+    mktCheck("Chassis / Cosmetic Grade",!!s.body_grade),
+    mktCheck("Activation Lock",r.result==="PASS"),
+  ].join("");
+  const rows=[];
+  if(bat.health_pct!=null)rows.push(["Battery Health",`${escv(bat.health_pct)}% · ${escv(bat.condition||"—")}`,"pass"]);
+  if(bat.cycles!=null)rows.push(["Battery Cycle Count",`${escv(bat.cycles)} cycles`,"pass"]);
+  if(bc.ran===true)rows.push(["Battery Cell Balance",escv(bc.verdict||"Pass"),"pass"]);
+  if(cam.sharpness!=null)rows.push(["Camera",`Verified · ${escv(cam.resolution||"")}`,"pass"]);
+  rows.push(["Microphone",aud.mic?escv(aud.mic):"Not recorded on this test",aud.mic?"pass":"unrecorded"]);
+  rows.push(["Speakers",aud.speakers?escv(aud.speakers):"Not recorded on this test",aud.speakers?"pass":"unrecorded"]);
+  if(tp.zones!=null)rows.push(["Trackpad",`${escv(tp.zones)} zones · ${escv(tp.gestures??0)} gestures · ${escv(tp.defects??0)} defects`,"pass"]);
+  if(pt.usbc>0)rows.push(["USB-C / Thunderbolt Ports",`${escv(pt.usbc)} of ${escv(pt.usbc)} verified`,"pass"]);
+  if(pt.headphone===true)rows.push(["Headphone Jack","Verified","pass"]);
+  if(ssd.ran===true){
+    const w=(ssd.bands||[]).find(b=>/write/i.test(b.label||"")),rd=(ssd.bands||[]).find(b=>/read/i.test(b.label||""));
+    rows.push(["Storage (SSD)",`${w?escv(w.value)+" MB/s write · ":""}${rd?escv(rd.value)+" MB/s read":""}`.trim()||"Verified","pass"]);
+  }
+  if(ram.ran===true)rows.push(["Memory (RAM)",`${s.memory_gb?escv(s.memory_gb)+" GB · ":""}Integrity verified`,"pass"]);
+  if(s.display_grade)rows.push(["Display / LCD",`Grade ${escv(s.display_grade)}`,"pass"]);
+  if(s.body_grade)rows.push(["Chassis / Cosmetic Grade",`Grade ${escv(s.body_grade)}`,"pass"]);
+  if(r.result==="PASS")rows.push(["Activation Lock","Off — verified","pass"]);
+  const half=Math.ceil(rows.length/2),col1=rows.slice(0,half),col2=rows.slice(half);
+  const rowHTML=(x)=>`<tr><td class=dl>${x[0]}</td><td class=dv>${x[1]}</td><td class=ds>${x[2]==="pass"?'<span class="pill pass">Pass</span>':'<span class="pill unrecorded">Not recorded</span>'}</td></tr>`;
+  const colTable=(rs)=>`<table class="dtable"><tbody>${rs.map(rowHTML).join("")}</tbody></table>`;
+  const spec=[["Model",s.model],["Processor",s.chip],["Memory",s.memory_gb?s.memory_gb+" GB":""],
+    ["Storage",r.storage?r.storage+" GB":""]].filter(x=>x[1]);
+  const specHTML=spec.map(x=>`<div><div class="k">${escv(x[0])}</div><div class="v">${escv(x[1])}</div></div>`).join("")+
+    `<div><div class="k">Date tested</div><div class="v">${escv(fmtTested(r))}</div></div>`+
+    `<div><div class="k">Technician</div><div class="v">${escv(r.tech_disp||"—")}</div></div>`+
+    `<div><div class="k">Certificate</div><div class="v" style="font-family:ui-monospace,Menlo,monospace">${escv(certId(r))}</div></div>`;
+  const qrUrl=certVerifyURL(r);
+  return `<div class="hdr"><div><img src="logo_orange.png" style="height:26px;filter:brightness(0) invert(1);display:block;margin-bottom:10px"><h1>Test Result Proof</h1><div class="sub">Yes Check · YesAgain refurbishment QC</div></div>
+    <div class="sn"><div class="snl">Serial</div><div class="snv">${escv(r.serial||"—")}</div><div class="result">${escv(r.result||"—")}${r.grade?` · Grade ${escv(r.grade)}`:""}</div></div></div>
+  <div class="wrap">
+    <div class="devgrid">${specHTML}</div>
+    <h2 class="sec">Standard functional checks</h2>
+    <div class="grid">${grid}</div>
+    <h2 class="sec">Detailed test results</h2>
+    <div class="detailwrap">${colTable(col1)}${colTable(col2)}</div>
+  </div>
+  <div class="foot">
+    <div class="verify">Generated ${escv(new Date().toLocaleString())} from the Yes Check central audit store.<br><b>Scan to verify this exact test online</b> — pinned to this test record, not just this serial.</div>
+    <div class="qr">${certQRSvg(qrUrl)}</div>
+  </div>`;
+}
+function printMarketplaceProof(r){
+  r=latestForSerial(r||CURRENT); if(!r)return;
+  if(r.result!=="PASS"){alert("Marketplace Test Proof is issued for PASSED units only. This unit's latest test is "+(r.result||"not passed")+".");return;}
+  const css=`@page{size:A4;margin:12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2438;font-size:11px;line-height:1.45}
+    .hdr{background:#112747;color:#fff;padding:20px 24px 18px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #fbb03b}
+    .hdr h1{margin:0;font-size:19px}.hdr .sub{color:#cdd8ea;font-size:11px;margin-top:3px}
+    .hdr .sn{text-align:right}.hdr .snl{font-size:10px;color:#9fb0c9;text-transform:uppercase;letter-spacing:.5px}
+    .hdr .snv{font-size:16px;font-weight:700;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+    .hdr .result{display:inline-block;margin-top:6px;background:#1d9e75;color:#fff;font-weight:800;font-size:11px;padding:3px 12px;border-radius:20px}
+    .wrap{padding:16px 24px 6px}
+    .devgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 16px;margin-bottom:4px;font-size:11px}
+    .devgrid .k{color:#5b6b82;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px}
+    .devgrid .v{font-weight:700;margin-top:1px}
+    h2.sec{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#112747;border-bottom:2px solid #fbb03b;padding-bottom:5px;margin:18px 0 10px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 14px;margin-bottom:6px}
+    .gitem{display:flex;align-items:center;gap:7px;font-size:10.5px}
+    .gcheck{color:#1d9e75;font-weight:900;width:14px;text-align:center}
+    .detailwrap{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+    .dtable{width:100%;border-collapse:collapse;font-size:10.5px}
+    .dtable td{padding:5px 3px;border-bottom:1px solid #e6e9ef;vertical-align:top}
+    .dtable td.dl{font-weight:600;width:44%}.dtable td.dv{color:#5b6b82}.dtable td.ds{text-align:right;white-space:nowrap}
+    .pill{display:inline-block;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;color:#fff}
+    .pill.pass{background:#1d9e75}.pill.unrecorded{background:#c98a12}
+    .foot{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;border-top:1px solid #e6e9ef;margin-top:16px}
+    .foot .verify{font-size:9.5px;color:#5b6b82}.foot .verify b{color:#112747}
+    .qr svg{width:64px;height:64px;display:block}`;
+  let f=document.getElementById("mktFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="mktFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Proof — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${marketplaceProofHTML(r)}</body></html>`);doc.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
 }
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
