@@ -1045,8 +1045,16 @@ const REPORT_STATUS_COLOR={normal:"var(--ok,#1d9e75)",pass:"var(--ok,#1d9e75)",o
 function reportCatHTML(label,obj){
   if(!obj)return "";
   if(Array.isArray(obj.bands)){
-    if(!obj.bands.length&&obj.ran===false)
-      return `<div class=cat><div class=cathead>${escv(label)}</div><div class=cmeta>Not run on this test — stored as ran:false, not defaulted to a pass.</div></div>`;
+    // Empty bands means nothing to show either way — never render a bare table with
+    // headers and zero rows (that read as "tested, nothing to report" rather than
+    // "not tested"). Some records store ran:false explicitly; others just omit `ran`
+    // entirely with an empty bands array — treat both the same, honestly, rather than
+    // only catching the explicit case.
+    if(!obj.bands.length){
+      const note=obj.ran===false?"Not run on this test — stored as ran:false, not defaulted to a pass."
+        :"Not run on this test — no measurements recorded for this category.";
+      return `<div class=cat><div class=cathead>${escv(label)}</div><div class=cmeta>${note}</div></div>`;
+    }
     const meta=[];
     if(obj.verdict)meta.push(`Verdict: <b>${escv(obj.verdict)}</b>`);
     if(obj.ran!=null)meta.push(`Ran: ${obj.ran?"yes":"no"}`);
