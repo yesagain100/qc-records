@@ -415,6 +415,14 @@ function renderColMgr(){const m=document.getElementById("colMgr");
       const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
 
 let loadGen=0;   // request-generation guard — see below
+// True while a load() for the CURRENT generation is still paging through Supabase (the
+// full table is ~11k+ rows, fetched 1000 at a time, so this can take several seconds).
+// render() reads this so a search typed mid-fetch shows "Loading…" instead of a false
+// "No records match." — before this flag existed, searching right after opening the page
+// (or right after clicking Refresh) could hit RAW while it was still empty/stale and
+// report zero results for a serial that's actually on file, self-correcting a few seconds
+// later. That looked like the dashboard being flaky rather than just still loading.
+let LOADING=true;
 async function load(){
   document.getElementById("err").style.display="none";
   // Stamp this call's mode + generation BEFORE any await. A mode switch mid-fetch (or a
@@ -423,6 +431,7 @@ async function load(){
   // RAW= assignment below (proven live: without this guard a slow Mac page could clobber
   // a fast iPhone fetch that started after it, silently showing the wrong dataset).
   const gen=++loadGen, wantMode=MODE;
+  LOADING=true;
   try{
     // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
     // through with limit/offset until a short page signals the end. Works at any table size.
@@ -438,9 +447,11 @@ async function load(){
       if(offset>5000000) break;             // hard safety stop
     }
     if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
+    LOADING=false;
     RAW=all.map(wantMode==="mobile"?flatMobile:flat);fillTechs();render();
   }catch(e){
     if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
+    LOADING=false;
     const el=document.getElementById("err");el.style.display="block";
     el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
@@ -487,7 +498,7 @@ function render(){
   document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate (units)"],[fail,"fail / reject (units)"],[last7,"tests in last 7 days"]]
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
-  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
+  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">${LOADING?"Loading…":"No records match."}</td></tr>`;
   else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
   const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
   document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
