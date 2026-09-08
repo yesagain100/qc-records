@@ -198,7 +198,7 @@
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
     <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
-    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><span class="x" onclick="closeModal()">×</span></div>
+    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -660,6 +660,7 @@ function openRowObj(r){if(!r)return;CURRENT=r;
   // hide those controls in mobile mode rather than print something that doesn't fit an iPhone.
   document.getElementById("printLabelBtn").style.display=MODE==="mobile"?"none":"";
   document.getElementById("printCertBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printReportBtn").style.display=MODE==="mobile"?"none":"";
   document.getElementById("labelSize").style.display=MODE==="mobile"?"none":"";
   if(MODE==="mobile"){
     const onDeviceRows=Object.entries(r.on_device||{}).map(([k,v])=>
@@ -1024,6 +1025,107 @@ function printCert(r){
   f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
   document.body.appendChild(f);const doc=f.contentWindow.document;
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Certificate</title><style>${css}</style></head><body>${certHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+
+// ---- Full Test Report (A4) — every parameter, every test session, any result. -----
+// Unlike the Certificate (customer-facing, PASS-only, single latest test), this pulls
+// every stored measurement for EVERY test on record for the unit, straight from
+// snapshot.details — the same per-category "bands" shape the app itself writes.
+// Built for marketplace / supplier-dispute investigations where the unit that shipped
+// may not be a clean pass, and where the pre- vs post-remediation history matters.
+const REPORT_CAT_LABELS={battery:"Battery & charging",battcell:"Battery cell balance",
+  ssd:"Storage / SSD (SMART)",ram:"Memory (RAM)",memstress:"Memory under heat",
+  thermal:"Thermal & cooling",thermalcycle:"Thermal-shock cycler",perf:"Performance benchmark",
+  ports:"Ports / USB",camera:"Camera",trackpad:"Trackpad",audio:"Audio"};
+const REPORT_CAT_ORDER=["battery","battcell","thermal","thermalcycle","perf","memstress","ssd","ram","ports","camera","trackpad","audio"];
+const REPORT_STATUS_COLOR={normal:"var(--ok,#1d9e75)",pass:"var(--ok,#1d9e75)",ok:"var(--ok,#1d9e75)",
+  watch:"var(--watch,#c98a12)",abnormal:"var(--bad,#c0392b)",fail:"var(--bad,#c0392b)",bad:"var(--bad,#c0392b)",
+  na:"#8a97ad","":"#8a97ad"};
+function reportCatHTML(label,obj){
+  if(!obj)return "";
+  if(Array.isArray(obj.bands)){
+    if(!obj.bands.length&&obj.ran===false)
+      return `<div class=cat><div class=cathead>${escv(label)}</div><div class=cmeta>Not run on this test — stored as ran:false, not defaulted to a pass.</div></div>`;
+    const meta=[];
+    if(obj.verdict)meta.push(`Verdict: <b>${escv(obj.verdict)}</b>`);
+    if(obj.ran!=null)meta.push(`Ran: ${obj.ran?"yes":"no"}`);
+    if(obj.duration_s!=null)meta.push(`Duration: ${obj.duration_s}s`);
+    const rows=obj.bands.map(b=>{
+      const st=(b.status||"").toLowerCase(),col=REPORT_STATUS_COLOR[st]||"#8a97ad";
+      return `<tr><td>${escv(b.label)}</td><td class=val>${escv(b.value)}</td><td>${escv(b.unit||"")}</td><td>${b.status?`<span class=pill style='background:${col}'>${escv(st.toUpperCase())}</span>`:""}</td></tr>`;
+    }).join("");
+    return `<div class=cat><div class=cathead>${escv(label)}</div>${meta.length?`<div class=cmeta>${meta.join(" &nbsp;·&nbsp; ")}</div>`:""}<table class=bands><thead><tr><th>Measurement</th><th>Value</th><th>Unit</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  const entries=Object.entries(obj).filter(([k,v])=>v!=null&&v!==""&&typeof v!=="object");
+  if(!entries.length)return "";
+  const rows=entries.map(([k,v])=>`<tr><td>${escv(k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()))}</td><td class=val>${escv(v)}</td><td></td><td></td></tr>`).join("");
+  return `<div class=cat><div class=cathead>${escv(label)}</div><table class=bands><thead><tr><th>Measurement</th><th>Value</th><th>Unit</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function reportSessionHTML(x,num){
+  const s=(x._raw&&x._raw.snapshot)||{},details=s.details||{};
+  const vClass=x.result==="PASS"?"pass":(x.result==="FAIL"||x.result==="REJECT")?"fail":"other";
+  const cats=REPORT_CAT_ORDER.map(k=>reportCatHTML(REPORT_CAT_LABELS[k],details[k])).filter(Boolean).join("");
+  return `<div class="testcard">
+    <div class="testhead"><div><span class="tnum">Test #${num}</span></div><span class="verdict ${vClass}">${escv(x.result_raw||x.result||"—")}${x.grade?` · Grade ${escv(x.grade)}`:""}</span></div>
+    <div class="tmeta"><span><b>Date tested:</b> ${escv(fmtTested(x))}</span><span><b>Technician:</b> ${escv(x.tech_disp||"—")}</span><span><b>Battery:</b> ${escv(battTxt(x))}</span>${x.faults?`<span style="color:#c0392b"><b>Faults:</b> ${escv(x.faults)}</span>`:""}</div>
+    <div class="cats">${cats||'<div class="nocat">No detailed parameter data stored on this test.</div>'}</div>
+  </div>`;
+}
+function fullReportHTML(r){
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(a.tested_at||"")>(b.tested_at||"")?1:-1);   // oldest first, so "Test #1" is really the first test
+  const latest=h[h.length-1]||r;
+  const spec=[["Serial number",latest.serial],["Model",latest.model],["SKU / configuration",latest.sku],
+    ["Colour",latest.colour],["Processor",latest.chip],["Memory",latest.memory?latest.memory+" GB":""],
+    ["Storage",latest.storage?latest.storage+" GB":""],["Year",latest.year]].filter(x=>x[1]);
+  const rowsHTML=spec.map(x=>`<tr><td class=k>${escv(x[0])}</td><td>${escv(x[1])}</td></tr>`).join("");
+  const sessions=h.map((x,i)=>reportSessionHTML(x,i+1)).join("");
+  return `<div class="hdr"><div><img src="logo_orange.png" style="height:26px;filter:brightness(0) invert(1);display:block;margin-bottom:8px"><h1>Quality Control Test Report</h1><div class="sub">Yes Check · YesAgain refurbishment QC</div></div>
+    <div class="sn">Serial<br><b>${escv(latest.serial||"—")}</b></div></div>
+  <div class="wrap">
+    <h2 class="sec">Device</h2><table class="info">${rowsHTML}</table>
+    <div class="banner">${h.length} test session${h.length===1?"":"s"} on record for this unit. Every measurement below is as recorded by Yes Check QC at the time of test — serial-locked, no manual overrides.</div>
+    <h2 class="sec">Test sessions</h2>
+    ${sessions}
+  </div>
+  <footer>© YesAgain Group · Yes Check QC · Generated ${escv(new Date().toLocaleString())} from the central audit store · Verify: yesagain100.github.io/qc-records</footer>`;
+}
+function printFullReport(r){
+  r=r||CURRENT; if(!r)return;
+  const css=`@page{size:A4;margin:12mm 12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2438;font-size:11px;line-height:1.45}
+    .hdr{background:#112747;color:#fff;padding:16px 20px;border-bottom:4px solid #fbb03b;display:flex;justify-content:space-between;align-items:flex-end}
+    .hdr h1{margin:0;font-size:17px;letter-spacing:-.2px}.hdr .sub{color:#cdd8ea;font-size:11px;margin-top:3px}
+    .hdr .sn{text-align:right;font-size:12px}.hdr .sn b{font-size:15px;font-family:ui-monospace,Menlo,monospace}
+    .wrap{padding:14px 18px}
+    h2.sec{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#112747;border-bottom:1.5px solid #fbb03b;padding-bottom:3px;margin:6px 0 6px}
+    table{width:100%;border-collapse:collapse}
+    .info td{padding:3px 6px;border-bottom:1px solid #eef1f6;vertical-align:top}
+    .info td.k{color:#5b6b82;width:42%;font-size:10px}
+    .banner{background:#fbfcfe;border:1px solid #e6e9ef;border-left:4px solid #fbb03b;border-radius:8px;padding:8px 12px;margin:6px 0 12px;font-size:11px}
+    .testcard{border:1px solid #e6e9ef;border-radius:10px;padding:0;margin:12px 0;overflow:hidden;break-inside:avoid}
+    .testhead{background:#112747;color:#fff;padding:8px 12px;display:flex;justify-content:space-between;align-items:center}
+    .tnum{font-weight:700;font-size:12px}
+    .verdict{font-weight:800;font-size:12px;padding:3px 10px;border-radius:20px}
+    .verdict.pass{background:#1d9e75}.verdict.fail{background:#c0392b}.verdict.other{background:#5b6b82}
+    .tmeta{display:flex;gap:18px;flex-wrap:wrap;padding:8px 12px;background:#f6f8fb;font-size:10.5px;border-bottom:1px solid #eef1f6}
+    .cats{padding:8px 12px;column-count:2;column-gap:16px}
+    .cat{break-inside:avoid;margin-bottom:10px}
+    .cathead{font-weight:700;color:#112747;font-size:10.5px;margin-bottom:2px}
+    .cmeta{color:#5b6b82;font-size:9px;margin-bottom:3px}
+    table.bands td,table.bands th{padding:2px 4px;border-bottom:1px solid #f0f2f6;font-size:9.5px;text-align:left}
+    table.bands th{color:#8a97ad;font-size:8.5px;text-transform:uppercase;letter-spacing:.3px}
+    table.bands td.val{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+    .pill{color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;white-space:nowrap}
+    .nocat{color:#8a97ad;font-style:italic;padding:6px 0}
+    footer{margin-top:14px;border-top:1px solid #e6e9ef;padding:8px 18px;color:#5b6b82;font-size:9px}`;
+  let f=document.getElementById("reportFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="reportFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Report — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${fullReportHTML(r)}</body></html>`);doc.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
 }
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
