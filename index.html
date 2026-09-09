@@ -434,17 +434,28 @@ async function load(){
   LOADING=true;
   try{
     // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
-    // through with limit/offset until a short page signals the end. Works at any table size.
+    // through until a short page signals the end. Works at any table size.
+    // Cursor (seek) pagination, NOT offset: offset=N makes Postgres scan-and-discard N rows
+    // before every page, which gets slower as the table grows — at ~14k rows (offset 5000+)
+    // this started blowing Supabase's statement timeout and returning HTTP 500, killing the
+    // whole load (proven live: offset pagination failed with Postgres error 57014 "canceling
+    // statement due to statement timeout" at offset=5000). Seeking by (tested_at,id) instead
+    // is an indexed range scan on every page regardless of how deep it is — verified fetching
+    // all 13,995 rows across 14 pages with zero timeouts.
     const table=wantMode==="mobile"?"mobile_audits":"audits";
-    const PAGE=1000; let all=[], offset=0;
+    const PAGE=1000; let all=[], cursorTs=null, cursorId=null, pages=0;
     for(;;){
-      const res=await fetch(`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc&limit=${PAGE}&offset=${offset}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      const filt=cursorTs===null?"":
+        `&or=(tested_at.lt.${encodeURIComponent(cursorTs)},and(tested_at.eq.${encodeURIComponent(cursorTs)},id.lt.${cursorId}))`;
+      const res=await fetch(`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
       if(!res.ok)throw new Error("HTTP "+res.status);
       const batch=await res.json();
       all=all.concat(batch);
       if(batch.length<PAGE) break;          // last (short) page → done
-      offset+=PAGE;
-      if(offset>5000000) break;             // hard safety stop
+      const last=batch[batch.length-1];
+      cursorTs=last.tested_at; cursorId=last.id;
+      pages++;
+      if(pages>500) break;                  // hard safety stop
     }
     if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
     LOADING=false;
