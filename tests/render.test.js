@@ -6,17 +6,8 @@ const assert = require("node:assert");
 const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
+const { extractFn } = require("./extract.js");
 
-function extractFn(src, name) {
-  const start = src.indexOf("function " + name + "(");
-  assert.ok(start > -1, name + " not found in index.html");
-  let i = src.indexOf("{", start), depth = 0;
-  for (let j = i; j < src.length; j++) {
-    if (src[j] === "{") depth++;
-    else if (src[j] === "}") { depth--; if (!depth) return src.slice(start, j + 1); }
-  }
-  throw new Error("unbalanced braces in " + name);
-}
 
 const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 const ctx = {

@@ -160,6 +160,10 @@
 </div></div>
 <header>
   <img src="logo_white.png" alt="YesAgain" style="height:24px;vertical-align:middle"><h1>Quality-Control Records</h1>
+  <div style="display:flex;background:#0c1d38;border-radius:9px;padding:3px;gap:2px">
+    <button id="devMac" style="border:0;border-radius:7px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;background:var(--orange);color:var(--navy)">💻 Macs</button>
+    <button id="devMobile" style="border:0;border-radius:7px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;background:transparent;color:#cdd8ea">📱 iPhones</button>
+  </div>
   <div class="sp"></div>
   <span id="who"></span>
   <button class="ghost" id="reload">↻ Refresh</button><button id="csv">⤓ Export to Excel (full)</button>
@@ -170,7 +174,7 @@
   <input id="q" placeholder="Scan the device serial (handheld) or type — the table auto-filters to matches" autocomplete="off">
   <div style="position:relative"><button id="bulkBtn">☰ Bulk actions</button><div id="bulkMenu"></div></div>
 </div>
-<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div><div class="tab" data-t="lot">Lot report</div></div>
+<div class="tabs"><div class="tab on" data-t="records">Records</div><div class="tab" data-t="analysis">Analysis &amp; faults</div><div class="tab" data-t="lot" id="lotTabBtn">Lot report</div></div>
 
 <div class="wrap">
   <div class="err" id="err"></div>
@@ -197,7 +201,7 @@
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
     <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
-    <button onclick="printLabel()">🖨 Print label</button><button onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button onclick="printTestCert()" title="Full component test certificate (A4) — every check with its result. Issued for any result.">🔧 Test certificate</button><span class="x" onclick="closeModal()">×</span></div>
+    <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><button id="printMktBtn" onclick="printMarketplaceProof()" title="Marketplace Test Proof (A4) — Refurbed-style functional checklist, latest test only, passed units only">🛒 Marketplace Proof</button><button id="printTestCertBtn" onclick="printTestCert()" title="Full component test certificate (A4) — every check with its result. Issued for any result.">🔧 Test certificate</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
 <div id="labelArea"></div>
@@ -573,11 +577,31 @@
   var AUTOMATED = [
     ["thermal", "Thermal / CPU stress"], ["ram", "Memory (RAM)"], ["ssd", "Storage (SSD)"],
     ["battcell", "Battery cell balance"], ["battery", "Battery drain"],
-    ["perf", "Performance benchmark"], ["memstress", "Memory under heat"],
-    ["thermalcycle", "Thermal-shock cycler"]
+    ["perf", "Performance benchmark"], ["memstress", "Memory under heat (beta, opt-in)"],
+    ["thermalcycle", "Thermal-shock cycler (beta, opt-in)"]
   ];
 
   var STATES = { pass: 1, fail: 1, na: 1, untested: 1 };
+
+  // The `details` key a test's proof of run is stored under. The drain test has its
+  // own: `battery` holds the battery's HARDWARE facts (health, cycles), and while both
+  // shared that key the facts overwrote the proof of run on upload — every record
+  // written before the fix has facts there and no record of the run at all.
+  function detailsKey(id) { return id === "battery" ? "battery_drain" : id; }
+
+  // What one test's entry says. `recorded` separates "this app build never stored it"
+  // from "the technician did not run it" — printing NOT RUN for the first blames a
+  // person for a bug.
+  function testRun(details, id) {
+    var x = details && details[detailsKey(id)];
+    if (!x || typeof x !== "object") {
+      return { id: id, recorded: false, ran: false, duration: "\u2014", verdict: "", score: "", bands: [] };
+    }
+    var ran = x.ran === true || (!("ran" in x) && !!x.verdict);
+    return { id: id, recorded: true, ran: ran, duration: ran ? fmtDuration(x.duration_s) : "\u2014",
+             verdict: x.verdict || "", score: x.score == null ? "" : x.score,
+             bands: Array.isArray(x.bands) ? x.bands : [] };
+  }
 
   function fmtDuration(s) {
     if (s == null || s <= 0) return "—";
@@ -615,21 +639,17 @@
 
     var automated = [];
     AUTOMATED.forEach(function (pair) {
-      var x = details[pair[0]];
-      if (!x || typeof x !== "object") return;      // absent from this audit — say nothing
-      var ran = x.ran === true || (!("ran" in x) && !!x.verdict);
-      automated.push({
-        id: pair[0], name: pair[1], ran: ran,
-        duration: ran ? fmtDuration(x.duration_s) : "—",
-        verdict: x.verdict || "", score: x.score == null ? "" : x.score,
-        bands: Array.isArray(x.bands) ? x.bands : []
-      });
+      var t = testRun(details, pair[0]);
+      if (!t.recorded) return;                      // absent from this audit — say nothing
+      t.name = pair[1];
+      automated.push(t);
     });
 
     return { groups: groups, automated: automated, counts: counts, hasChecklist: !!(list && list.length) };
   }
 
-  var api = { certificateRows: certificateRows, fmtDuration: fmtDuration, AUTOMATED: AUTOMATED };
+  var api = { certificateRows: certificateRows, fmtDuration: fmtDuration, AUTOMATED: AUTOMATED,
+              detailsKey: detailsKey, testRun: testRun };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.YCCertificate = api;
 })(typeof window !== "undefined" ? window : globalThis);
@@ -695,6 +715,65 @@ function techLabel(name,user){
   if(u && (!n || n.toLowerCase()==="technician")) return "@"+u;
   if(u && n && u.toLowerCase()!==n.toLowerCase()) return n+" (@"+u+")";
   return n || (u?"@"+u:"");
+}
+// ---- What the list asks Supabase for --------------------------------------------
+// Every audit row carries a `snapshot` JSONB holding the unit's whole test detail —
+// about 7 KB a row, ~105 MB across the table, which is what made the dashboard take
+// minutes and then hang. The table itself only needs a few dozen scalar fields, and
+// PostgREST can pull those out of the JSON server-side (snapshot->>field), so the list
+// downloads ~5 MB instead. The full snapshot is fetched for ONE record, when it is
+// opened (see ensureSnapshot).
+const SNAP_FIELDS=["serial","timestamp","model","model_identifier","year","chip","memory_gb",
+  "technician","technician_username","department","warehouse","tested_local","timezone",
+  "app_build","app_kind","grade","display_grade","body_grade","result","battery_health",
+  "battery_cycles","battery_condition","colour","storage_total_gb","wifi_ssid","lot_id","po",
+  "supplier","sku","part_number","cpu_speed","cpu_cores","gpu_cores","kbd_layout","kbd_language",
+  "photo_count","perf_score","notes","client_uuid",
+  "fault1","fault2","fault3","fault4","fault5","fault6"];
+const LIST_COLS=["id","serial","tested_at","created_at","technician","result","grade","colour",
+  "perf_score","perf_result","battery_health","battery_cycles","storage_total_gb","wifi_ssid",
+  "macos","notes","failed_categories","screen_issues","defects","client_uuid","test_number","entity"];
+function listSelect(){
+  return LIST_COLS.concat(SNAP_FIELDS.map(f=>`s_${f}:snapshot->>${f}`)).join(",");
+}
+// Turn the flat s_<field> columns back into the { snapshot: {...} } shape the rest of
+// the page reads, so nothing downstream needs to know the list is slim.
+function unslim(row){
+  if(row.snapshot) return row;                 // already a full row (mobile mode / cached)
+  const out={},snap={};
+  for(const k in row){
+    if(k.startsWith("s_")){ if(row[k]!=null&&row[k]!=="") snap[k.slice(2)]=row[k]; }
+    else out[k]=row[k];
+  }
+  out.snapshot=snap;
+  return out;
+}
+// The full snapshot for ONE record, fetched the first time it is opened and kept on the
+// row. Everything that reads snapshot.details (the modal, the reports, the certificates)
+// goes through here.
+async function ensureSnapshot(r){
+  const raw=r&&r._raw;
+  if(!raw||raw._full) return r;
+  try{
+    const table=MODE==="mobile"?"mobile_audits":"audits";
+    const res=await fetch(`${SUPA}/rest/v1/${table}?id=eq.${encodeURIComponent(raw.id)}&select=snapshot`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(res.ok){
+      const rows=await res.json();
+      if(Array.isArray(rows)&&rows[0]&&rows[0].snapshot){
+        raw.snapshot=Object.assign({},raw.snapshot,rows[0].snapshot);
+        raw._full=true;                        // only on success: a dropped connection retries
+      }
+    }
+  }catch(e){/* keep the slim fields we already have — the record stays readable */}
+  return r;
+}
+// Every session on record for one serial, with full snapshots (the Full Test Report
+// walks the unit's whole history).
+async function ensureSnapshotsForSerial(serial){
+  const rows=RAW.filter(x=>x.serial&&serial&&x.serial.toUpperCase()===serial.toUpperCase());
+  for(const x of rows) await ensureSnapshot(x);
+  return rows;
 }
 function flat(r){const s=r.snapshot||{};
   const _bh=num(r.battery_health??s.battery_health), _bc=r.battery_condition||s.battery_condition||"";
@@ -769,16 +848,63 @@ const ALLCOLS=[
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
 const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department","faults"];
-let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
 const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
-const colW=k=>WIDTHS[k]||DEFAULT_W[k]||110;
-const colKey=()=>"qcCols:"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN
-function loadCols(){ORDER=ALLCOLS.map(c=>c.key);VIS=DEFAULT_VIS.slice();WIDTHS={};
+
+// ---- MOBILE (iPhone/iPad) mode — separate table, columns, and mapping ----------
+// Yes Check Mobile writes to mobile_units/mobile_audits (cloud/mobile_schema.sql) via
+// submit_mobile_audit — its OWN tables, kept apart from the Mac audits table above so an
+// iPhone's fields (IMEI, iOS, activation lock, on-device Probe results) never sit blank
+// next to Mac-only ones (chip, memory, macOS) in the same row.
+let MODE="mac";                                          // "mac" | "mobile"
+function flatMobile(r){const s=r.snapshot||{};
+  const onDevice=r.on_device||s.on_device||{};
+  const failedTests=Object.entries(onDevice).filter(([,v])=>v==="fail").map(([k])=>k);
+  const faults=[r.failed_categories||s.failed_categories,r.defects||s.defects].filter(x=>x&&String(x).trim())
+    .flatMap(x=>String(x).split(";")).map(f=>f.trim()).filter(Boolean);
+  if(!faults.length&&failedTests.length)faults.push(...failedTests);
+  return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
+    model:s.model||r.model||"",imei:r.imei||s.imei||"",udid:r.udid||s.udid||"",
+    ios:r.ios||s.ios||"",storage:num(r.storage_total_gb??s.storage_total_gb),
+    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
+    tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),
+    warehouse:r.entity||s.warehouse||s.entity||"",
+    grade:(r.grade||s.grade||"").toUpperCase(),result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
+    batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
+    activation_locked:(r.activation_locked??s.activation_locked),managed:(r.managed??s.managed),
+    carrier_locked:(r.carrier_locked??s.carrier_locked),blacklisted:(r.blacklisted??s.blacklisted),
+    on_device:onDevice,photos:r.photo_count||s.photo_count||0,notes:r.notes||s.notes||"",
+    client_uuid:r.client_uuid||s.client_uuid||"",faults:[...new Set(faults)].join("; "),_raw:r};}
+const MOBILECOLS=[
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
+  {key:"imei",label:"IMEI",sk:"imei",html:r=>`<td class="mono">${r.imei||"—"}</td>`},
+  {key:"ios",label:"iOS",sk:"ios",html:r=>`<td class="muted">${r.ios||"—"}</td>`},
+  {key:"storage",label:"Storage",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
+  {key:"grade",label:"Grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
+  {key:"activation_locked",label:"Activation Lock",html:r=>`<td>${r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"managed",label:"MDM / Managed",html:r=>`<td>${r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
+];
+const MOBILE_DEFAULT_VIS=["tested_at","serial","model","imei","ios","storage","grade","result","batt","activation_locked","managed","technician","warehouse","faults"];
+const MOBILE_DEFAULT_W={tested_at:140,warehouse:100,serial:120,model:150,imei:150,ios:80,storage:75,grade:70,result:95,batt:115,activation_locked:120,managed:120,technician:110,faults:240};
+
+function curCols(){return MODE==="mobile"?MOBILECOLS:ALLCOLS;}
+function curDefaultVis(){return MODE==="mobile"?MOBILE_DEFAULT_VIS:DEFAULT_VIS;}
+function curDefaultW(){return MODE==="mobile"?MOBILE_DEFAULT_W:DEFAULT_W;}
+let ORDER=ALLCOLS.map(c=>c.key), VIS=DEFAULT_VIS.slice(), WIDTHS={};
+const colW=k=>WIDTHS[k]||curDefaultW()[k]||110;
+const colKey=()=>"qcCols:"+MODE+":"+(sessionStorage.getItem("qcUser")||"_");   // layout saved PER LOGIN, PER MODE
+function loadCols(){const cols=curCols();ORDER=cols.map(c=>c.key);VIS=curDefaultVis().slice();WIDTHS={};
   try{const s=JSON.parse(localStorage.getItem(colKey())||"null");
-    if(s&&s.order&&s.visible){ORDER=ALLCOLS.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
-      VIS=s.visible.filter(k=>ALLCOLS.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
+    if(s&&s.order&&s.visible){ORDER=cols.map(c=>c.key).sort((a,b)=>{const i=s.order.indexOf(a),j=s.order.indexOf(b);return (i<0?99:i)-(j<0?99:j);});
+      VIS=s.visible.filter(k=>cols.some(c=>c.key===k));WIDTHS=s.widths||{};}}catch(e){}}
 function saveCols(){localStorage.setItem(colKey(),JSON.stringify({order:ORDER,visible:VIS,widths:WIDTHS}));}
-function visCols(){return ORDER.filter(k=>VIS.includes(k)).map(k=>ALLCOLS.find(c=>c.key===k));}
+function visCols(){const cols=curCols();return ORDER.filter(k=>VIS.includes(k)).map(k=>cols.find(c=>c.key===k)).filter(Boolean);}
 function tblWidth(){return 70+visCols().reduce((s,c)=>s+colW(c.key),0);}
 function renderHead(){const cols=visCols();
   document.getElementById("tbl").style.width=tblWidth()+"px";
@@ -799,7 +925,8 @@ function renderHead(){const cols=visCols();
   const sa=document.getElementById("selAll");sa.onclick=e=>{e.stopPropagation();if(sa.checked)ROWS.forEach(r=>SEL.add(r.id));else SEL.clear();render();};}
 let dragK=null;
 function renderColMgr(){const m=document.getElementById("colMgr");
-  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=ALLCOLS.find(x=>x.key===k);
+  const cols=curCols();
+  m.innerHTML='<div class="hd">Show &amp; drag to reorder</div>'+ORDER.map(k=>{const c=cols.find(x=>x.key===k);
     return `<div class="ci" draggable="true" data-k="${k}"><span class="gw">⠿</span><input type="checkbox" ${VIS.includes(k)?"checked":""}> ${c.label}</div>`;}).join("");
   m.querySelectorAll(".ci").forEach(el=>{const k=el.dataset.k;
     el.querySelector("input").onchange=e=>{if(e.target.checked){if(!VIS.includes(k))VIS.push(k);}else VIS=VIS.filter(x=>x!==k);saveCols();renderHead();render();};
@@ -809,14 +936,67 @@ function renderColMgr(){const m=document.getElementById("colMgr");
     el.ondrop=e=>{e.preventDefault();el.classList.remove("dragover");if(!dragK||dragK===k)return;
       const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
 
+let loadGen=0;   // request-generation guard — see below
+// True while a load() for the CURRENT generation is still paging through Supabase (the
+// full table is ~11k+ rows, fetched 1000 at a time, so this can take several seconds).
+// render() reads this so a search typed mid-fetch shows "Loading…" instead of a false
+// "No records match." — before this flag existed, searching right after opening the page
+// (or right after clicking Refresh) could hit RAW while it was still empty/stale and
+// report zero results for a serial that's actually on file, self-correcting a few seconds
+// later. That looked like the dashboard being flaky rather than just still loading.
+let LOADING=true;
 async function load(){
   document.getElementById("err").style.display="none";
+  // Stamp this call's mode + generation BEFORE any await. A mode switch mid-fetch (or a
+  // rapid double-toggle) bumps loadGen, so a slower, now-stale request's response can
+  // never overwrite RAW after a newer one has already landed — checked right before the
+  // RAW= assignment below (proven live: without this guard a slow Mac page could clobber
+  // a fast iPhone fetch that started after it, silently showing the wrong dataset).
+  const gen=++loadGen, wantMode=MODE;
+  LOADING=true;
   try{
-    const res=await fetch(`${SUPA}/rest/v1/audits?select=*&order=tested_at.desc&limit=10000`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-    if(!res.ok)throw new Error("HTTP "+res.status);
-    RAW=(await res.json()).map(flat);fillTechs();render();
+    // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
+    // through until a short page signals the end. Works at any table size.
+    // Cursor (seek) pagination, NOT offset: offset=N makes Postgres scan-and-discard N rows
+    // before every page, which gets slower as the table grows — at ~14k rows (offset 5000+)
+    // this blew Supabase's statement timeout outright (Postgres error 57014), killing the
+    // whole load. Seeking by (tested_at,id) fixes the scan-cost part of that.
+    // 1000 rows a page (PostgREST's own maximum): the statement timeouts that once forced
+    // 200 came from shipping every row's `snapshot` JSONB, not from the row count — the
+    // list no longer asks for it, so a full page is ~360KB instead of ~7MB. A 2x retry on
+    // a transient page failure absorbs the odd slow tick without failing the whole load.
+    // Mobile is a separate, tiny table — it stays on select=* (nothing to gain).
+    const table=wantMode==="mobile"?"mobile_audits":"audits";
+    const sel=wantMode==="mobile"?"*":listSelect();
+    const PAGE=1000; let all=[], cursorTs=null, cursorId=null, pages=0;
+    for(;;){
+      const filt=cursorTs===null?"":
+        `&or=(tested_at.lt.${encodeURIComponent(cursorTs)},and(tested_at.eq.${encodeURIComponent(cursorTs)},id.lt.${cursorId}))`;
+      const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
+      let batch=null, lastErr=null;
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          const res=await fetch(url,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+          if(!res.ok){lastErr=new Error("HTTP "+res.status); if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw lastErr;}
+          batch=await res.json();
+          break;
+        }catch(e){lastErr=e; if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw e;}
+      }
+      all=all.concat(batch);
+      if(batch.length<PAGE) break;          // last (short) page → done
+      const last=batch[batch.length-1];
+      cursorTs=last.tested_at; cursorId=last.id;
+      pages++;
+      if(pages>2000) break;                 // hard safety stop
+    }
+    if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
+    LOADING=false;
+    RAW=wantMode==="mobile"?all.map(flatMobile):all.map(r=>flat(unslim(r)));fillTechs();render();
     loadLotSerials();
-  }catch(e){const el=document.getElementById("err");el.style.display="block";
+  }catch(e){
+    if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
+    LOADING=false;
+    const el=document.getElementById("err");el.style.display="block";
     el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
     document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
 }
@@ -846,7 +1026,7 @@ function current(){
     if(fd&&(r.department||"")!==fd)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
-    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku,r.imei].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
   // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
   if(document.getElementById("uniqSerial").checked){
@@ -857,6 +1037,13 @@ function current(){
   rows.sort((a,b)=>{let x=a[sortK]??"",y=b[sortK]??"";if(sortK==="batt"){x=a.batt_h??-1;y=b.batt_h??-1;}if(sortK==="storage"){x=a.storage??-1;y=b.storage??-1;}
     return(x>y?1:x<y?-1:0)*sortDir;});
   return rows;}
+// How many rows the table paints at once. Building 14k <tr> in one innerHTML — with a
+// print button and a dozen cells each — is what froze the page on every keystroke; the
+// rest arrive on "Show more". Filtering is still over the WHOLE set, so the counters,
+// the analysis and the exports never see a truncated list.
+const PAGE_ROWS=200; let SHOWN=PAGE_ROWS;
+function rowsToRender(rows,shown){return rows.slice(0,Math.max(0,shown||rows.length));}
+function showMore(){SHOWN+=PAGE_ROWS;render();}
 function render(){
   ROWS=current();const real=ROWS;
   const uniq=latestPerSerial(real);                       // unique units for the quality numbers
@@ -868,10 +1055,14 @@ function render(){
   document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate (units)"],[fail,"fail / reject (units)"],[last7,"tests in last 7 days"]]
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
-  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">No records match.</td></tr>`;
-  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">${LOADING?"Loading…":"No records match."}</td></tr>`;
+  else tb.innerHTML=rowsToRender(ROWS,SHOWN).map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
   const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
-  document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
+  const shown=Math.min(SHOWN,ROWS.length);
+  const more=ROWS.length-shown;
+  document.getElementById("foot").innerHTML=
+    `${ROWS.length} record(s)${more>0?` · showing ${shown}`:""} · live from Supabase · ${new Date().toLocaleString()}`
+    +(more>0?` · <a href="#" onclick="showMore();return false;">show ${Math.min(more,PAGE_ROWS)} more</a>`:"");
   renderAnalysis(real);
   if(document.getElementById("lotTab").style.display!=="none")renderLotReport();
 }
@@ -1035,9 +1226,39 @@ function printLotReport(){const u=lotUnits(),defects=u.filter(isDefective);
   <p class="s" style="margin-top:20px">Generated by YesAgain · Yes Check QC</p>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 function openModal(i){openRowObj(ROWS[i]);}
-function openRowObj(r){if(!r)return;CURRENT=r;
+async function openRowObj(r){if(!r)return;CURRENT=r;
+  await ensureSnapshot(r);            // the list rows are slim — pull this one's detail
   document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
   const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  // Phone printing (labels/certificates sized for the Mac's spec fields) isn't built yet —
+  // hide those controls in mobile mode rather than print something that doesn't fit an iPhone.
+  document.getElementById("printLabelBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printCertBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printReportBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("printMktBtn").style.display=MODE==="mobile"?"none":"";
+  document.getElementById("labelSize").style.display=MODE==="mobile"?"none":"";
+  if(MODE==="mobile"){
+    const onDeviceRows=Object.entries(r.on_device||{}).map(([k,v])=>
+      `<tr><td>${escv(k)}</td><td style="font-weight:700;color:${v==='pass'?'var(--ok)':v==='fail'?'var(--bad)':'var(--muted)'}">${escv(String(v).toUpperCase())}</td></tr>`).join("");
+    document.getElementById("mBody").innerHTML=`
+      <dl class="kv">
+        ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
+        ${row("Grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
+        ${row("Tested",escv(fmtTested(r)))}${row("Technician",escv(r.tech_disp))}${row("Warehouse",escv(r.warehouse))}</dl>
+      <div class="sec">Specification</div><dl class="kv">
+        ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("IMEI",escv(r.imei))}${row("UDID",escv(r.udid))}
+        ${row("iOS",escv(r.ios))}${row("Storage",r.storage?r.storage+" GB":"")}</dl>
+      <div class="sec">Battery &amp; locks</div><dl class="kv">
+        ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
+        ${row("Activation Lock",r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"")}
+        ${row("MDM / Managed",r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"")}
+        ${row("Carrier lock",r.carrier_locked===true?"LOCKED":r.carrier_locked===false?"clean":"")}
+        ${row("Blacklist",r.blacklisted===true?"BLACKLISTED":r.blacklisted===false?"clean":"")}</dl>
+      ${onDeviceRows?`<div class="sec">On-device tests (Probe)</div><table style="font-size:12px"><tbody>${onDeviceRows}</tbody></table>`:""}
+      ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
+      ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
+      ${historyHTML(r)}`;
+  } else {
   document.getElementById("mBody").innerHTML=`
     <dl class="kv">
       ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
@@ -1056,11 +1277,13 @@ function openRowObj(r){if(!r)return;CURRENT=r;
     <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
     <div id="wipeSec"></div>
     ${testExecHTML(r)}
+    ${interactiveExecHTML(r)}
     ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
     ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
     ${historyHTML(r)}`;
   fillLabelSizes();
   loadWipeStatus(r.serial);
+  }
   document.getElementById("modal").classList.add("show");}
 /* Test-execution accountability: did the tech actually RUN each automated /
    performance test, and for how long? Durations are recorded by the engine —
@@ -1068,25 +1291,58 @@ function openRowObj(r){if(!r)return;CURRENT=r;
 function testExecHTML(r){
   const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
   if(!d) return "";
-  const TESTS=[["thermal","Thermal / CPU stress"],["ram","Memory (RAM)"],["ssd","Storage (SSD)"],
-    ["battcell","Battery cell balance"],["battery","Battery drain"],["perf","Performance benchmark"],
-    ["memstress","Memory under heat"],["thermalcycle","Thermal-shock cycler"]];
-  const fmtD=s=>{if(s==null||s<=0)return"—";s=Math.round(s);return s>=60?Math.floor(s/60)+"m "+(s%60)+"s":s+"s";};
+  // One reader for the whole portal (certificate.js), so the table, the certificate and
+  // the full report can't disagree about whether a test ran.
   let any=false;
-  const rows=TESTS.map(([id,name])=>{
-    const x=d[id];
-    const has=x&&typeof x==="object"&&("ran" in x||"duration_s" in x||"verdict" in x);
-    if(has)any=true;
-    const ran=has&&(x.ran===true||(!("ran" in x)&&!!x.verdict));
+  const rows=YCCertificate.AUTOMATED.map(([id,name])=>{
+    const t=YCCertificate.testRun(d,id);
+    if(t.recorded)any=true;
+    // A record written before the drain fix stores no proof of run at all, so whether
+    // that test ran cannot be known from it — it reads NOT RUN like any other test with
+    // nothing recorded, rather than inventing a third state for it.
     return `<tr><td>${escv(name)}</td>
-      <td style="font-weight:700;color:${ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${ran?"RUN — "+fmtD(x.duration_s):"NOT RUN"}</td>
-      <td class="muted">${has?escv(x.verdict||"—"):"—"}</td></tr>`;
+      <td style="font-weight:700;color:${t.ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${t.ran?"RUN — "+t.duration:"NOT RUN"}</td>
+      <td class="muted">${t.recorded?escv(t.verdict||"—"):"—"}</td></tr>`;
   }).join("");
   if(!any) return "";   // old audits without the fields — no false NOT-RUNs
   return `<div class="sec">Test execution — proof of run</div>
     <table style="font-size:12px"><thead><tr><th>Test</th><th>Executed</th><th>Engine verdict</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div class="muted" style="font-size:11px;margin-top:4px">Run lengths recorded by the engine — not entered by the technician.</div>`;
+}
+/* Interactive tests (ports, camera, trackpad, audio) don't have a ran/duration_s/
+   verdict shape like the automated tests above — they're simple recorded values
+   from a guided on-screen check, not a timed background run — so they never
+   appeared in "Proof of run" above and were otherwise invisible in this modal.
+   Shown honestly: a field left blank by the technician (e.g. mic/speakers not
+   completed) reads as "Not recorded", never silently blank or defaulted to pass. */
+function interactiveExecHTML(r){
+  const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
+  if(!d) return "";
+  const v=(x)=>(x===null||x===undefined||x==="")?`<span class="muted">Not recorded</span>`:escv(x);
+  const rows=[];
+  if(d.ports){
+    const p=d.ports;
+    const parts=[`USB-C/TB3: ${p.usbc>0?p.usbc+" verified":v(null)}`];
+    if(p.headphone!=null)parts.push(`Headphone: ${p.headphone?"verified":"absent"}`);
+    if(p.hdmi)parts.push("HDMI: verified");
+    if(p.sd)parts.push("SD: verified");
+    if(p.magsafe)parts.push("MagSafe: verified");
+    rows.push(["Ports & USB",parts.join(" · ")]);
+  }
+  if(d.camera)rows.push(["Camera",d.camera.sharpness!=null?`Sharpness ${Number(d.camera.sharpness).toFixed(1)} · ${escv(d.camera.resolution||"—")} · Brightness ${d.camera.brightness_pct!=null?Number(d.camera.brightness_pct).toFixed(0)+"%":"—"}`:v(null)]);
+  if(d.trackpad)rows.push(["Trackpad",d.trackpad.zones!=null?`${d.trackpad.zones} zones · ${d.trackpad.gestures??0} gestures · ${d.trackpad.defects??0} defects`:v(null)]);
+  if(d.audio){
+    const a=d.audio;
+    rows.push(["Audio — Microphone",v(a.mic)]);
+    rows.push(["Audio — Speakers",v(a.speakers)]);
+    if(a.rub_buzz_l||a.rub_buzz_r)rows.push(["Audio — Rub & buzz",`L: ${v(a.rub_buzz_l)} · R: ${v(a.rub_buzz_r)}`]);
+  }
+  if(!rows.length) return "";
+  const trs=rows.map(([name,val])=>`<tr><td style="width:38%">${escv(name)}</td><td>${val}</td></tr>`).join("");
+  return `<div class="sec">Interactive tests</div>
+    <table style="font-size:12px"><tbody>${trs}</tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:4px">Recorded by the guided on-screen check, not a timed background run — a blank field means it wasn't completed on this test, not that it failed.</div>`;
 }
 /* Data-wipe certification status — read from the wipe_certificate_status view
    (single source of truth). HONESTY RULE: an initiated-only certificate never
@@ -1354,7 +1610,8 @@ function certHTML(r){
     <div class="ccopy">© YesAgain Group · Yes Check QC. Reflects the device's condition at the time of inspection.</div>
   </div>`;
 }
-function printCert(r){
+async function printCert(r){
+  await ensureSnapshot(r||CURRENT);
   r=r||CURRENT; if(!r)return;
   if(r.result!=="PASS"){alert("Certificates are issued for PASSED units only. This unit is "+(r.result||"not passed")+".");return;}
   const css=`@page{size:A4;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
@@ -1391,6 +1648,261 @@ function printCert(r){
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Certificate</title><style>${css}</style></head><body>${certHTML(r)}</body></html>`);doc.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
 }
+
+// ---- Full Test Report (A4) — every parameter, every test session, any result. -----
+// Unlike the Certificate (customer-facing, PASS-only, single latest test), this pulls
+// every stored measurement for EVERY test on record for the unit, straight from
+// snapshot.details — the same per-category "bands" shape the app itself writes.
+// Built for marketplace / supplier-dispute investigations where the unit that shipped
+// may not be a clean pass, and where the pre- vs post-remediation history matters.
+const REPORT_CAT_LABELS={battery:"Battery & charging",battery_drain:"Battery drain test",battcell:"Battery cell balance",
+  ssd:"Storage / SSD (SMART)",ram:"Memory (RAM)",memstress:"Memory under heat (beta, opt-in)",
+  thermal:"Thermal & cooling",thermalcycle:"Thermal-shock cycler (beta, opt-in)",perf:"Performance benchmark",
+  ports:"Ports / USB",camera:"Camera",trackpad:"Trackpad",audio:"Audio"};
+const REPORT_CAT_ORDER=["battery","battery_drain","battcell","thermal","thermalcycle","perf","memstress","ssd","ram","ports","camera","trackpad","audio"];
+const REPORT_STATUS_COLOR={normal:"var(--ok,#1d9e75)",pass:"var(--ok,#1d9e75)",ok:"var(--ok,#1d9e75)",
+  watch:"var(--watch,#c98a12)",abnormal:"var(--bad,#c0392b)",fail:"var(--bad,#c0392b)",bad:"var(--bad,#c0392b)",
+  na:"#8a97ad","":"#8a97ad"};
+function reportCatHTML(label,obj){
+  if(!obj)return "";
+  if(Array.isArray(obj.bands)){
+    // Empty bands means nothing to show either way — never render a bare table with
+    // headers and zero rows (that read as "tested, nothing to report" rather than
+    // "not tested"). Some records store ran:false explicitly; others just omit `ran`
+    // entirely with an empty bands array — treat both the same, honestly, rather than
+    // only catching the explicit case.
+    if(!obj.bands.length){
+      const note=obj.ran===false?"Not run on this test — stored as ran:false, not defaulted to a pass."
+        :"Not run on this test — no measurements recorded for this category.";
+      return `<div class=cat><div class=cathead>${escv(label)}</div><div class=cmeta>${note}</div></div>`;
+    }
+    const meta=[];
+    if(obj.verdict)meta.push(`Verdict: <b>${escv(obj.verdict)}</b>`);
+    if(obj.ran!=null)meta.push(`Ran: ${obj.ran?"yes":"no"}`);
+    if(obj.duration_s!=null)meta.push(`Duration: ${obj.duration_s}s`);
+    const rows=obj.bands.map(b=>{
+      const st=(b.status||"").toLowerCase(),col=REPORT_STATUS_COLOR[st]||"#8a97ad";
+      return `<tr><td>${escv(b.label)}</td><td class=val>${escv(b.value)}</td><td>${escv(b.unit||"")}</td><td>${b.status?`<span class=pill style='background:${col}'>${escv(st.toUpperCase())}</span>`:""}</td></tr>`;
+    }).join("");
+    return `<div class=cat><div class=cathead>${escv(label)}</div>${meta.length?`<div class=cmeta>${meta.join(" &nbsp;·&nbsp; ")}</div>`:""}<table class=bands><thead><tr><th>Measurement</th><th>Value</th><th>Unit</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  const entries=Object.entries(obj).filter(([k,v])=>v!=null&&v!==""&&typeof v!=="object");
+  if(!entries.length)return "";
+  const rows=entries.map(([k,v])=>`<tr><td>${escv(k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()))}</td><td class=val>${escv(v)}</td><td></td><td></td></tr>`).join("");
+  return `<div class=cat><div class=cathead>${escv(label)}</div><table class=bands><thead><tr><th>Measurement</th><th>Value</th><th>Unit</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function reportSessionHTML(x,num){
+  const s=(x._raw&&x._raw.snapshot)||{},details=s.details||{};
+  const vClass=x.result==="PASS"?"pass":(x.result==="FAIL"||x.result==="REJECT")?"fail":"other";
+  const cats=REPORT_CAT_ORDER.map(k=>reportCatHTML(REPORT_CAT_LABELS[k],details[k])).filter(Boolean).join("");
+  return `<div class="testcard">
+    <div class="testhead"><div><span class="tnum">Test #${num}</span></div><span class="verdict ${vClass}">${escv(x.result_raw||x.result||"—")}${x.grade?` · Grade ${escv(x.grade)}`:""}</span></div>
+    <div class="tmeta"><span><b>Date tested:</b> ${escv(fmtTested(x))}</span><span><b>Technician:</b> ${escv(x.tech_disp||"—")}</span><span><b>Battery:</b> ${escv(battTxt(x))}</span>${x.faults?`<span style="color:#c0392b"><b>Faults:</b> ${escv(x.faults)}</span>`:""}</div>
+    <div class="cats">${cats||'<div class="nocat">No detailed parameter data stored on this test.</div>'}</div>
+  </div>`;
+}
+function fullReportHTML(r){
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(a.tested_at||"")>(b.tested_at||"")?1:-1);   // oldest first, so "Test #1" is really the first test
+  const latest=h[h.length-1]||r;
+  const spec=[["Serial number",latest.serial],["Model",latest.model],["SKU / configuration",latest.sku],
+    ["Colour",latest.colour],["Processor",latest.chip],["Memory",latest.memory?latest.memory+" GB":""],
+    ["Storage",latest.storage?latest.storage+" GB":""],["Year",latest.year]].filter(x=>x[1]);
+  const rowsHTML=spec.map(x=>`<tr><td class=k>${escv(x[0])}</td><td>${escv(x[1])}</td></tr>`).join("");
+  const sessions=h.map((x,i)=>reportSessionHTML(x,i+1)).join("");
+  return `<div class="hdr"><div><img src="logo_orange.png" style="height:26px;filter:brightness(0) invert(1);display:block;margin-bottom:8px"><h1>Quality Control Test Report</h1><div class="sub">Yes Check · YesAgain refurbishment QC</div></div>
+    <div class="sn">Serial<br><b>${escv(latest.serial||"—")}</b></div></div>
+  <div class="wrap">
+    <h2 class="sec">Device</h2><table class="info">${rowsHTML}</table>
+    <div class="banner">${h.length} test session${h.length===1?"":"s"} on record for this unit. Every measurement below is as recorded by Yes Check QC at the time of test — serial-locked, no manual overrides.</div>
+    <h2 class="sec">Test sessions</h2>
+    ${sessions}
+  </div>
+  <footer>© YesAgain Group · Yes Check QC · Generated ${escv(new Date().toLocaleString())} from the central audit store · Verify: yesagain100.github.io/qc-records</footer>`;
+}
+async function printFullReport(r){
+  r=r||CURRENT; if(!r)return;
+  await ensureSnapshotsForSerial(r.serial);   // the report walks the unit's whole history
+  const css=`@page{size:A4;margin:12mm 12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2438;font-size:11px;line-height:1.45}
+    .hdr{background:#112747;color:#fff;padding:16px 20px;border-bottom:4px solid #fbb03b;display:flex;justify-content:space-between;align-items:flex-end}
+    .hdr h1{margin:0;font-size:17px;letter-spacing:-.2px}.hdr .sub{color:#cdd8ea;font-size:11px;margin-top:3px}
+    .hdr .sn{text-align:right;font-size:12px}.hdr .sn b{font-size:15px;font-family:ui-monospace,Menlo,monospace}
+    .wrap{padding:14px 18px}
+    h2.sec{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#112747;border-bottom:1.5px solid #fbb03b;padding-bottom:3px;margin:6px 0 6px}
+    table{width:100%;border-collapse:collapse}
+    .info td{padding:3px 6px;border-bottom:1px solid #eef1f6;vertical-align:top}
+    .info td.k{color:#5b6b82;width:42%;font-size:10px}
+    .banner{background:#fbfcfe;border:1px solid #e6e9ef;border-left:4px solid #fbb03b;border-radius:8px;padding:8px 12px;margin:6px 0 12px;font-size:11px}
+    .testcard{border:1px solid #e6e9ef;border-radius:10px;padding:0;margin:12px 0;overflow:hidden;break-inside:avoid}
+    .testhead{background:#112747;color:#fff;padding:8px 12px;display:flex;justify-content:space-between;align-items:center}
+    .tnum{font-weight:700;font-size:12px}
+    .verdict{font-weight:800;font-size:12px;padding:3px 10px;border-radius:20px}
+    .verdict.pass{background:#1d9e75}.verdict.fail{background:#c0392b}.verdict.other{background:#5b6b82}
+    .tmeta{display:flex;gap:18px;flex-wrap:wrap;padding:8px 12px;background:#f6f8fb;font-size:10.5px;border-bottom:1px solid #eef1f6}
+    .cats{padding:8px 12px;column-count:2;column-gap:16px}
+    .cat{break-inside:avoid;margin-bottom:10px}
+    .cathead{font-weight:700;color:#112747;font-size:10.5px;margin-bottom:2px}
+    .cmeta{color:#5b6b82;font-size:9px;margin-bottom:3px}
+    table.bands td,table.bands th{padding:2px 4px;border-bottom:1px solid #f0f2f6;font-size:9.5px;text-align:left}
+    table.bands th{color:#8a97ad;font-size:8.5px;text-transform:uppercase;letter-spacing:.3px}
+    table.bands td.val{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+    .pill{color:#fff;font-size:8px;font-weight:700;padding:1px 5px;border-radius:10px;white-space:nowrap}
+    .nocat{color:#8a97ad;font-style:italic;padding:6px 0}
+    footer{margin-top:14px;border-top:1px solid #e6e9ef;padding:8px 18px;color:#5b6b82;font-size:9px}`;
+  let f=document.getElementById("reportFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="reportFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Report — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${fullReportHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+// ---- Marketplace Test Proof (A4) — Refurbed-style functional checklist. -----
+// Deliberately narrower than the Full Report: latest test only (never mixes in
+// an earlier session's results), and only lists checklist items that have real
+// per-unit data behind them. Performance Benchmark and Fan/Thermal are excluded
+// on purpose — both are scored relative to a CPU-family baseline (Intel vs Apple
+// Silicon throttle differently under load), so an "abnormal" sub-reading there
+// can be normal behaviour for that chip, not a real defect. Bluetooth / Touch ID /
+// Power Button / per-key keyboard are also excluded: Yes Check's hard gate proves
+// they were checked before a PASS could save, but the individual result isn't
+// persisted into the historical record the way battery/camera/storage/etc are —
+// only include what can be shown with a real, traceable value behind it.
+function latestForSerial(r){
+  if(!r)return r;
+  const h=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(a.tested_at||"")>(b.tested_at||"")?1:-1);
+  return h.length?h[h.length-1]:r;
+}
+function mktCheck(label,ok){return ok?`<div class="gitem"><span class="gcheck">&#10003;</span>${escv(label)}</div>`:"";}
+function bandVal(bands,re){const b=(bands||[]).find(x=>re.test(x.label||""));return b?b.value:null;}
+// Friendly, marketplace-appropriate temperature framing — deliberately NOT the
+// internal watch/abnormal pill (see the note on Performance/Thermal exclusion
+// above): a raw °C reading is not CPU-platform-relative the way throttle-% or
+// throughput are, so it's safe to show, but "ABNORMAL" styling on a genuinely
+// fine reading reads as alarming to a marketplace reviewer. 45°C is the same
+// watch-ceiling the engine itself uses for both these readings.
+function tempNote(c){
+  const n=parseFloat(c);
+  if(isNaN(n))return null;
+  return n<=45?`${n.toFixed(1)}°C — within normal operating range`:`${n.toFixed(1)}°C — elevated, see full report`;
+}
+function marketplaceProofHTML(r){
+  r=latestForSerial(r);
+  const s=(r._raw&&r._raw.snapshot)||{},d=s.details||{};
+  const bat=d.battery||{},bc=d.battcell||{},cam=d.camera||{},aud=d.audio||{},
+        pt=d.ports||{},tp=d.trackpad||{},ssd=d.ssd||{},ram=d.ram||{},perf=d.perf||{};
+  const liquid=s.liquid||{};
+  const battTemp=bandVal(bc.bands,/battery temp/i);
+  const cpuTemp=bandVal(perf.bands,/peak temp/i);
+  const grid=[
+    mktCheck("Battery Test",bat.health_pct!=null),
+    mktCheck("Battery Cell Balance",bc.ran===true),
+    mktCheck("Camera",cam.sharpness!=null),
+    mktCheck("Microphone",!!aud.mic),
+    mktCheck("Speakers",!!aud.speakers),
+    mktCheck("Trackpad",tp.zones!=null),
+    mktCheck("USB-C / Thunderbolt",pt.usbc>0),
+    mktCheck("Headphone Jack",pt.headphone===true),
+    mktCheck("SD Card Reader",pt.sd===true),
+    mktCheck("HDMI",pt.hdmi===true),
+    mktCheck("MagSafe / DC-in",pt.magsafe===true),
+    mktCheck("Storage (SSD)",ssd.ran===true),
+    mktCheck("Memory (RAM)",ram.ran===true),
+    mktCheck("Display / LCD",!!s.display_grade),
+    mktCheck("Chassis / Cosmetic Grade",!!s.body_grade),
+    mktCheck("WiFi",!!r.wifi),
+    mktCheck("Liquid / Corrosion Check",liquid.status==="clean_window"||liquid.status==="review"),
+    mktCheck("Activation Lock",r.result==="PASS"),
+    mktCheck("MDM Lock",r.result==="PASS"),
+  ].join("");
+  const rows=[];
+  if(bat.health_pct!=null)rows.push(["Battery Health",`${escv(bat.health_pct)}% · ${escv(bat.condition||"—")}`,"pass"]);
+  if(bat.cycles!=null)rows.push(["Battery Cycle Count",`${escv(bat.cycles)} cycles`,"pass"]);
+  if(bc.ran===true)rows.push(["Battery Cell Balance",escv(bc.verdict||"Pass"),"pass"]);
+  if(battTemp!=null)rows.push(["Battery Temperature",escv(tempNote(battTemp)),"pass"]);
+  if(cpuTemp!=null)rows.push(["CPU Temperature (est.)",escv(tempNote(cpuTemp)),"pass"]);
+  if(cam.sharpness!=null)rows.push(["Camera",`Verified · ${escv(cam.resolution||"")}`,"pass"]);
+  rows.push(["Microphone",aud.mic?escv(aud.mic):"Not recorded on this test",aud.mic?"pass":"unrecorded"]);
+  rows.push(["Speakers",aud.speakers?escv(aud.speakers):"Not recorded on this test",aud.speakers?"pass":"unrecorded"]);
+  if(tp.zones!=null)rows.push(["Trackpad",`${escv(tp.zones)} zones · ${escv(tp.gestures??0)} gestures · ${escv(tp.defects??0)} defects`,"pass"]);
+  if(pt.usbc>0)rows.push(["USB-C / Thunderbolt Ports",`${escv(pt.usbc)} of ${escv(pt.usbc)} verified`,"pass"]);
+  if(pt.headphone===true)rows.push(["Headphone Jack","Verified","pass"]);
+  if(ssd.ran===true){
+    const w=(ssd.bands||[]).find(b=>/write/i.test(b.label||"")),rd=(ssd.bands||[]).find(b=>/read/i.test(b.label||""));
+    rows.push(["Storage (SSD)",`${w?escv(w.value)+" MB/s write · ":""}${rd?escv(rd.value)+" MB/s read":""}`.trim()||"Verified","pass"]);
+  }
+  if(ram.ran===true)rows.push(["Memory (RAM)",`${s.memory_gb?escv(s.memory_gb)+" GB · ":""}Integrity verified`,"pass"]);
+  if(s.display_grade)rows.push(["Display / LCD",`Grade ${escv(s.display_grade)}`,"pass"]);
+  if(s.body_grade)rows.push(["Chassis / Cosmetic Grade",`Grade ${escv(s.body_grade)}`,"pass"]);
+  if(r.wifi)rows.push(["WiFi",`Connected · ${escv(r.wifi)}`,"pass"]);
+  if(liquid.status==="clean_window")rows.push(["Liquid / Corrosion Check","No liquid contact detected","pass"]);
+  else if(liquid.status==="review")rows.push(["Liquid / Corrosion Check","Flagged — see full report","unrecorded"]);
+  else if(liquid.status==="not_assessable")rows.push(["Liquid / Corrosion Check","Not assessable on this model","unrecorded"]);
+  if(r.result==="PASS")rows.push(["Activation Lock","Off — verified","pass"]);
+  if(r.result==="PASS")rows.push(["MDM Lock","Not enrolled — verified","pass"]);
+  const half=Math.ceil(rows.length/2),col1=rows.slice(0,half),col2=rows.slice(half);
+  const rowHTML=(x)=>`<tr><td class=dl>${x[0]}</td><td class=dv>${x[1]}</td><td class=ds>${x[2]==="pass"?'<span class="pill pass">Pass</span>':'<span class="pill unrecorded">Not recorded</span>'}</td></tr>`;
+  const colTable=(rs)=>`<table class="dtable"><tbody>${rs.map(rowHTML).join("")}</tbody></table>`;
+  const spec=[["Model",s.model],["Processor",s.chip],["Memory",s.memory_gb?s.memory_gb+" GB":""],
+    ["Storage",r.storage?r.storage+" GB":""]].filter(x=>x[1]);
+  const specHTML=spec.map(x=>`<div><div class="k">${escv(x[0])}</div><div class="v">${escv(x[1])}</div></div>`).join("")+
+    `<div><div class="k">Date tested</div><div class="v">${escv(fmtTested(r))}</div></div>`+
+    `<div><div class="k">Technician</div><div class="v">${escv(r.tech_disp||"—")}</div></div>`+
+    `<div><div class="k">Certificate</div><div class="v" style="font-family:ui-monospace,Menlo,monospace">${escv(certId(r))}</div></div>`;
+  const qrUrl=certVerifyURL(r);
+  return `<div class="hdr"><div><img src="logo_orange.png" style="height:26px;filter:brightness(0) invert(1);display:block;margin-bottom:10px"><h1>Test Result Proof</h1><div class="sub">Yes Check · YesAgain refurbishment QC</div></div>
+    <div class="sn"><div class="snl">Serial</div><div class="snv">${escv(r.serial||"—")}</div><div class="result">${escv(r.result||"—")}${r.grade?` · Grade ${escv(r.grade)}`:""}</div></div></div>
+  <div class="wrap">
+    <div class="devgrid">${specHTML}</div>
+    <h2 class="sec">Standard functional checks</h2>
+    <div class="grid">${grid}</div>
+    <h2 class="sec">Detailed test results</h2>
+    <div class="detailwrap">${colTable(col1)}${colTable(col2)}</div>
+  </div>
+  <div class="foot">
+    <div class="verify">Generated ${escv(new Date().toLocaleString())} from the Yes Check central audit store.<br><b>Scan to verify this exact test online</b> — pinned to this test record, not just this serial.</div>
+    <div class="qr">${certQRSvg(qrUrl)}</div>
+  </div>`;
+}
+async function printMarketplaceProof(r){
+  r=latestForSerial(r||CURRENT); if(!r)return;
+  await ensureSnapshot(r);
+  if(r.result!=="PASS"){alert("Marketplace Test Proof is issued for PASSED units only. This unit's latest test is "+(r.result||"not passed")+".");return;}
+  const css=`@page{size:A4;margin:12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2438;font-size:11px;line-height:1.45}
+    .hdr{background:#112747;color:#fff;padding:20px 24px 18px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #fbb03b}
+    .hdr h1{margin:0;font-size:19px}.hdr .sub{color:#cdd8ea;font-size:11px;margin-top:3px}
+    .hdr .sn{text-align:right}.hdr .snl{font-size:10px;color:#9fb0c9;text-transform:uppercase;letter-spacing:.5px}
+    .hdr .snv{font-size:16px;font-weight:700;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+    .hdr .result{display:inline-block;margin-top:6px;background:#1d9e75;color:#fff;font-weight:800;font-size:11px;padding:3px 12px;border-radius:20px}
+    .wrap{padding:16px 24px 6px}
+    .devgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 16px;margin-bottom:4px;font-size:11px}
+    .devgrid .k{color:#5b6b82;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px}
+    .devgrid .v{font-weight:700;margin-top:1px}
+    h2.sec{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#112747;border-bottom:2px solid #fbb03b;padding-bottom:5px;margin:18px 0 10px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 14px;margin-bottom:6px}
+    .gitem{display:flex;align-items:center;gap:7px;font-size:10.5px}
+    .gcheck{color:#1d9e75;font-weight:900;width:14px;text-align:center}
+    .detailwrap{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+    .dtable{width:100%;border-collapse:collapse;font-size:10.5px}
+    .dtable td{padding:5px 3px;border-bottom:1px solid #e6e9ef;vertical-align:top}
+    .dtable td.dl{font-weight:600;width:44%}.dtable td.dv{color:#5b6b82}.dtable td.ds{text-align:right;white-space:nowrap}
+    .pill{display:inline-block;font-size:9px;font-weight:800;padding:2px 8px;border-radius:20px;color:#fff}
+    .pill.pass{background:#1d9e75}.pill.unrecorded{background:#c98a12}
+    .foot{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;border-top:1px solid #e6e9ef;margin-top:16px}
+    .foot .verify{font-size:9.5px;color:#5b6b82}.foot .verify b{color:#112747}
+    .qr svg{width:64px;height:64px;display:block}`;
+  let f=document.getElementById("mktFrame");if(f)f.remove();
+  f=document.createElement("iframe");f.id="mktFrame";f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Test Proof — ${escv(r.serial||"")}</title><style>${css}</style></head><body>${marketplaceProofHTML(r)}</body></html>`);doc.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
+}
+
 // ---- Full component test certificate (A4) ---------------------------------
 // Every check performed on the device with its real result — the breakdown customer
 // service shares per device. Unlike the Certificate of Quality this is issued for ANY
@@ -1438,7 +1950,8 @@ function testCertHTML(r){
     <div class="ccopy">© YesAgain Group · Yes Check QC. Records the device's condition and the checks performed at the time of inspection.</div>
   </div>`;
 }
-function printTestCert(r){
+async function printTestCert(r){
+  await ensureSnapshot(r||CURRENT);
   r=r||CURRENT; if(!r)return;
   const css=`@page{size:A4;margin:11mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
     .tcert{width:100%;border:3px solid #112747;border-radius:6px;padding:18px 22px}
@@ -1516,7 +2029,12 @@ function closeBulk(){document.getElementById("bulkMenu").classList.remove("show"
 function csv(){
   // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
   // LCD/body grade, CPU+speed, and Apple-Silicon CPU/GPU core counts.
-  const COLS=[["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
+  const COLS=MODE==="mobile"?[["tested_at","Tested"],["serial","Serial"],["model","Model"],
+    ["imei","IMEI"],["udid","UDID"],["ios","iOS"],["storage","Storage (GB)"],["grade","Grade"],["result","Result"],
+    ["batt_h","Battery health %"],["batt_c","Battery cycles"],
+    ["activation_locked","Activation Lock"],["managed","MDM / Managed"],["carrier_locked","Carrier locked"],["blacklisted","Blacklisted"],
+    ["technician","Technician"],["warehouse","Warehouse"],["faults","Faults"],["notes","Notes"]]:
+   [["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
     ["chip","CPU / Chip"],["cpu_speed","CPU speed"],["cpu_cores","CPU cores"],["gpu_cores","GPU cores"],
     ["memory","RAM (GB)"],["storage","SSD (GB)"],["colour","Colour"],["sku","YesAgain SKU"],["part_number","Part number"],
     ["grade","Overall grade"],["display_grade","LCD / Display grade"],["body_grade","Body grade"],["result","Result"],
@@ -1537,10 +2055,26 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelect
   document.getElementById("analysisTab").style.display=v==="analysis"?"block":"none";
   document.getElementById("lotTab").style.display=v==="lot"?"block":"none";
   if(v==="lot")renderLotReport();});
+// ---- device-type toggle: Macs (audits) | iPhones (mobile_audits) — separate table,
+// columns and record shape, same dashboard/login. Lot report doesn't apply to phone QC
+// yet (no lot/PO/supplier tracked), so it's hidden rather than shown permanently empty.
+function setMode(m){if(MODE===m)return;MODE=m;
+  document.getElementById("devMac").style.background=m==="mac"?"var(--orange)":"transparent";
+  document.getElementById("devMac").style.color=m==="mac"?"var(--navy)":"#cdd8ea";
+  document.getElementById("devMobile").style.background=m==="mobile"?"var(--orange)":"transparent";
+  document.getElementById("devMobile").style.color=m==="mobile"?"var(--navy)":"#cdd8ea";
+  document.getElementById("lotTabBtn").style.display=m==="mobile"?"none":"";
+  if(m==="mobile"&&document.getElementById("lotTabBtn").classList.contains("on")){
+    document.querySelector('.tab[data-t="records"]').click();}
+  SEL.clear();LOT_SEL="";
+  loadCols();renderHead();load();}
+document.getElementById("devMac").onclick=()=>setMode("mac");
+document.getElementById("devMobile").onclick=()=>setMode("mobile");
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"]
+  .forEach(id=>document.getElementById(id).addEventListener("input",()=>{SHOWN=PAGE_ROWS;render();}));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------

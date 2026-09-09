@@ -15,11 +15,31 @@
   var AUTOMATED = [
     ["thermal", "Thermal / CPU stress"], ["ram", "Memory (RAM)"], ["ssd", "Storage (SSD)"],
     ["battcell", "Battery cell balance"], ["battery", "Battery drain"],
-    ["perf", "Performance benchmark"], ["memstress", "Memory under heat"],
-    ["thermalcycle", "Thermal-shock cycler"]
+    ["perf", "Performance benchmark"], ["memstress", "Memory under heat (beta, opt-in)"],
+    ["thermalcycle", "Thermal-shock cycler (beta, opt-in)"]
   ];
 
   var STATES = { pass: 1, fail: 1, na: 1, untested: 1 };
+
+  // The `details` key a test's proof of run is stored under. The drain test has its
+  // own: `battery` holds the battery's HARDWARE facts (health, cycles), and while both
+  // shared that key the facts overwrote the proof of run on upload — every record
+  // written before the fix has facts there and no record of the run at all.
+  function detailsKey(id) { return id === "battery" ? "battery_drain" : id; }
+
+  // What one test's entry says. `recorded` separates "this app build never stored it"
+  // from "the technician did not run it" — printing NOT RUN for the first blames a
+  // person for a bug.
+  function testRun(details, id) {
+    var x = details && details[detailsKey(id)];
+    if (!x || typeof x !== "object") {
+      return { id: id, recorded: false, ran: false, duration: "\u2014", verdict: "", score: "", bands: [] };
+    }
+    var ran = x.ran === true || (!("ran" in x) && !!x.verdict);
+    return { id: id, recorded: true, ran: ran, duration: ran ? fmtDuration(x.duration_s) : "\u2014",
+             verdict: x.verdict || "", score: x.score == null ? "" : x.score,
+             bands: Array.isArray(x.bands) ? x.bands : [] };
+  }
 
   function fmtDuration(s) {
     if (s == null || s <= 0) return "—";
@@ -57,21 +77,17 @@
 
     var automated = [];
     AUTOMATED.forEach(function (pair) {
-      var x = details[pair[0]];
-      if (!x || typeof x !== "object") return;      // absent from this audit — say nothing
-      var ran = x.ran === true || (!("ran" in x) && !!x.verdict);
-      automated.push({
-        id: pair[0], name: pair[1], ran: ran,
-        duration: ran ? fmtDuration(x.duration_s) : "—",
-        verdict: x.verdict || "", score: x.score == null ? "" : x.score,
-        bands: Array.isArray(x.bands) ? x.bands : []
-      });
+      var t = testRun(details, pair[0]);
+      if (!t.recorded) return;                      // absent from this audit — say nothing
+      t.name = pair[1];
+      automated.push(t);
     });
 
     return { groups: groups, automated: automated, counts: counts, hasChecklist: !!(list && list.length) };
   }
 
-  var api = { certificateRows: certificateRows, fmtDuration: fmtDuration, AUTOMATED: AUTOMATED };
+  var api = { certificateRows: certificateRows, fmtDuration: fmtDuration, AUTOMATED: AUTOMATED,
+              detailsKey: detailsKey, testRun: testRun };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.YCCertificate = api;
 })(typeof window !== "undefined" ? window : globalThis);

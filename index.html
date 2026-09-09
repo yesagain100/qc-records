@@ -271,6 +271,65 @@ function techLabel(name,user){
   if(u && n && u.toLowerCase()!==n.toLowerCase()) return n+" (@"+u+")";
   return n || (u?"@"+u:"");
 }
+// ---- What the list asks Supabase for --------------------------------------------
+// Every audit row carries a `snapshot` JSONB holding the unit's whole test detail —
+// about 7 KB a row, ~105 MB across the table, which is what made the dashboard take
+// minutes and then hang. The table itself only needs a few dozen scalar fields, and
+// PostgREST can pull those out of the JSON server-side (snapshot->>field), so the list
+// downloads ~5 MB instead. The full snapshot is fetched for ONE record, when it is
+// opened (see ensureSnapshot).
+const SNAP_FIELDS=["serial","timestamp","model","model_identifier","year","chip","memory_gb",
+  "technician","technician_username","department","warehouse","tested_local","timezone",
+  "app_build","app_kind","grade","display_grade","body_grade","result","battery_health",
+  "battery_cycles","battery_condition","colour","storage_total_gb","wifi_ssid","lot_id","po",
+  "supplier","sku","part_number","cpu_speed","cpu_cores","gpu_cores","kbd_layout","kbd_language",
+  "photo_count","perf_score","notes","client_uuid",
+  "fault1","fault2","fault3","fault4","fault5","fault6"];
+const LIST_COLS=["id","serial","tested_at","created_at","technician","result","grade","colour",
+  "perf_score","perf_result","battery_health","battery_cycles","storage_total_gb","wifi_ssid",
+  "macos","notes","failed_categories","screen_issues","defects","client_uuid","test_number","entity"];
+function listSelect(){
+  return LIST_COLS.concat(SNAP_FIELDS.map(f=>`s_${f}:snapshot->>${f}`)).join(",");
+}
+// Turn the flat s_<field> columns back into the { snapshot: {...} } shape the rest of
+// the page reads, so nothing downstream needs to know the list is slim.
+function unslim(row){
+  if(row.snapshot) return row;                 // already a full row (mobile mode / cached)
+  const out={},snap={};
+  for(const k in row){
+    if(k.startsWith("s_")){ if(row[k]!=null&&row[k]!=="") snap[k.slice(2)]=row[k]; }
+    else out[k]=row[k];
+  }
+  out.snapshot=snap;
+  return out;
+}
+// The full snapshot for ONE record, fetched the first time it is opened and kept on the
+// row. Everything that reads snapshot.details (the modal, the reports, the certificates)
+// goes through here.
+async function ensureSnapshot(r){
+  const raw=r&&r._raw;
+  if(!raw||raw._full) return r;
+  try{
+    const table=MODE==="mobile"?"mobile_audits":"audits";
+    const res=await fetch(`${SUPA}/rest/v1/${table}?id=eq.${encodeURIComponent(raw.id)}&select=snapshot`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(res.ok){
+      const rows=await res.json();
+      if(Array.isArray(rows)&&rows[0]&&rows[0].snapshot){
+        raw.snapshot=Object.assign({},raw.snapshot,rows[0].snapshot);
+        raw._full=true;                        // only on success: a dropped connection retries
+      }
+    }
+  }catch(e){/* keep the slim fields we already have — the record stays readable */}
+  return r;
+}
+// Every session on record for one serial, with full snapshots (the Full Test Report
+// walks the unit's whole history).
+async function ensureSnapshotsForSerial(serial){
+  const rows=RAW.filter(x=>x.serial&&serial&&x.serial.toUpperCase()===serial.toUpperCase());
+  for(const x of rows) await ensureSnapshot(x);
+  return rows;
+}
 function flat(r){const s=r.snapshot||{};
   const _bh=num(r.battery_health??s.battery_health), _bc=r.battery_condition||s.battery_condition||"";
   const faults=[...new Set(
@@ -457,19 +516,18 @@ async function load(){
     // before every page, which gets slower as the table grows — at ~14k rows (offset 5000+)
     // this blew Supabase's statement timeout outright (Postgres error 57014), killing the
     // whole load. Seeking by (tested_at,id) fixes the scan-cost part of that.
-    // PAGE size is separately capped at 200, NOT 1000: each row's `snapshot` column carries
-    // the full nested test-detail JSON, so a 1000-row page is ~7MB — proven live to be
-    // BORDERLINE on the statement timeout even on page 1 with no filter at all (repeated
-    // sampling: sometimes 2-5s and fine, sometimes 500 "canceling statement due to statement
-    // timeout" — load-dependent, not deterministic). 200 rows/page stayed at 1-2s across 71
-    // consecutive pages (14,012 rows) with zero failures. A 2x retry on a transient page
-    // failure absorbs the odd slow tick without failing the whole load over one bad page.
+    // 1000 rows a page (PostgREST's own maximum): the statement timeouts that once forced
+    // 200 came from shipping every row's `snapshot` JSONB, not from the row count — the
+    // list no longer asks for it, so a full page is ~360KB instead of ~7MB. A 2x retry on
+    // a transient page failure absorbs the odd slow tick without failing the whole load.
+    // Mobile is a separate, tiny table — it stays on select=* (nothing to gain).
     const table=wantMode==="mobile"?"mobile_audits":"audits";
-    const PAGE=200; let all=[], cursorTs=null, cursorId=null, pages=0;
+    const sel=wantMode==="mobile"?"*":listSelect();
+    const PAGE=1000; let all=[], cursorTs=null, cursorId=null, pages=0;
     for(;;){
       const filt=cursorTs===null?"":
         `&or=(tested_at.lt.${encodeURIComponent(cursorTs)},and(tested_at.eq.${encodeURIComponent(cursorTs)},id.lt.${cursorId}))`;
-      const url=`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
+      const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
       let batch=null, lastErr=null;
       for(let attempt=0;attempt<3;attempt++){
         try{
@@ -488,7 +546,7 @@ async function load(){
     }
     if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
     LOADING=false;
-    RAW=all.map(wantMode==="mobile"?flatMobile:flat);fillTechs();render();
+    RAW=wantMode==="mobile"?all.map(flatMobile):all.map(r=>flat(unslim(r)));fillTechs();render();
     loadLotSerials();
   }catch(e){
     if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
@@ -534,6 +592,13 @@ function current(){
   rows.sort((a,b)=>{let x=a[sortK]??"",y=b[sortK]??"";if(sortK==="batt"){x=a.batt_h??-1;y=b.batt_h??-1;}if(sortK==="storage"){x=a.storage??-1;y=b.storage??-1;}
     return(x>y?1:x<y?-1:0)*sortDir;});
   return rows;}
+// How many rows the table paints at once. Building 14k <tr> in one innerHTML — with a
+// print button and a dozen cells each — is what froze the page on every keystroke; the
+// rest arrive on "Show more". Filtering is still over the WHOLE set, so the counters,
+// the analysis and the exports never see a truncated list.
+const PAGE_ROWS=200; let SHOWN=PAGE_ROWS;
+function rowsToRender(rows,shown){return rows.slice(0,Math.max(0,shown||rows.length));}
+function showMore(){SHOWN+=PAGE_ROWS;render();}
 function render(){
   ROWS=current();const real=ROWS;
   const uniq=latestPerSerial(real);                       // unique units for the quality numbers
@@ -546,9 +611,13 @@ function render(){
     .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
   if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">${LOADING?"Loading…":"No records match."}</td></tr>`;
-  else tb.innerHTML=ROWS.map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
+  else tb.innerHTML=rowsToRender(ROWS,SHOWN).map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
   const sa=document.getElementById("selAll");if(sa)sa.checked=ROWS.length>0&&ROWS.every(r=>SEL.has(r.id));
-  document.getElementById("foot").textContent=`${ROWS.length} record(s) · live from Supabase · ${new Date().toLocaleString()}`;
+  const shown=Math.min(SHOWN,ROWS.length);
+  const more=ROWS.length-shown;
+  document.getElementById("foot").innerHTML=
+    `${ROWS.length} record(s)${more>0?` · showing ${shown}`:""} · live from Supabase · ${new Date().toLocaleString()}`
+    +(more>0?` · <a href="#" onclick="showMore();return false;">show ${Math.min(more,PAGE_ROWS)} more</a>`:"");
   renderAnalysis(real);
   if(document.getElementById("lotTab").style.display!=="none")renderLotReport();
 }
@@ -712,7 +781,8 @@ function printLotReport(){const u=lotUnits(),defects=u.filter(isDefective);
   <p class="s" style="margin-top:20px">Generated by YesAgain · Yes Check QC</p>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 function openModal(i){openRowObj(ROWS[i]);}
-function openRowObj(r){if(!r)return;CURRENT=r;
+async function openRowObj(r){if(!r)return;CURRENT=r;
+  await ensureSnapshot(r);            // the list rows are slim — pull this one's detail
   document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
   const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
   // Phone printing (labels/certificates sized for the Mac's spec fields) isn't built yet —
@@ -776,28 +846,18 @@ function openRowObj(r){if(!r)return;CURRENT=r;
 function testExecHTML(r){
   const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
   if(!d) return "";
-  // NOTE on "battery_drain" vs "battery": the drain test used to be saved under the
-  // same "battery" key as the unit's static hardware facts (health%/cycles/condition),
-  // which silently wiped its ran/duration_s/verdict before every upload — every record
-  // showed "NOT RUN" even when the test genuinely ran and passed (fixed upstream in the
-  // native app, commit 99d0df8, "Record that the battery drain test ran"). The fix gives
-  // the drain test its own key, battery_drain, so it can no longer collide with the
-  // hardware-facts object. Records saved before that fix shipped will correctly show
-  // "NOT RUN" here (the real result from those sessions was never recoverable), not
-  // because the test didn't run, but because there is no way to know from that data.
-  const TESTS=[["thermal","Thermal / CPU stress"],["ram","Memory (RAM)"],["ssd","Storage (SSD)"],
-    ["battcell","Battery cell balance"],["battery_drain","Battery drain"],["perf","Performance benchmark"],
-    ["memstress","Memory under heat (beta, opt-in)"],["thermalcycle","Thermal-shock cycler (beta, opt-in)"]];
-  const fmtD=s=>{if(s==null||s<=0)return"—";s=Math.round(s);return s>=60?Math.floor(s/60)+"m "+(s%60)+"s":s+"s";};
+  // One reader for the whole portal (certificate.js), so the table, the certificate and
+  // the full report can't disagree about whether a test ran.
   let any=false;
-  const rows=TESTS.map(([id,name])=>{
-    const x=d[id];
-    const has=x&&typeof x==="object"&&("ran" in x||"duration_s" in x||"verdict" in x);
-    if(has)any=true;
-    const ran=has&&(x.ran===true||(!("ran" in x)&&!!x.verdict));
+  const rows=YCCertificate.AUTOMATED.map(([id,name])=>{
+    const t=YCCertificate.testRun(d,id);
+    if(t.recorded)any=true;
+    // A record written before the drain fix stores no proof of run at all, so whether
+    // that test ran cannot be known from it — it reads NOT RUN like any other test with
+    // nothing recorded, rather than inventing a third state for it.
     return `<tr><td>${escv(name)}</td>
-      <td style="font-weight:700;color:${ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${ran?"RUN — "+fmtD(x.duration_s):"NOT RUN"}</td>
-      <td class="muted">${has?escv(x.verdict||"—"):"—"}</td></tr>`;
+      <td style="font-weight:700;color:${t.ran?"var(--ok,#1d9e75)":"var(--bad,#c0392b)"}">${t.ran?"RUN — "+t.duration:"NOT RUN"}</td>
+      <td class="muted">${t.recorded?escv(t.verdict||"—"):"—"}</td></tr>`;
   }).join("");
   if(!any) return "";   // old audits without the fields — no false NOT-RUNs
   return `<div class="sec">Test execution — proof of run</div>
@@ -1105,7 +1165,8 @@ function certHTML(r){
     <div class="ccopy">© YesAgain Group · Yes Check QC. Reflects the device's condition at the time of inspection.</div>
   </div>`;
 }
-function printCert(r){
+async function printCert(r){
+  await ensureSnapshot(r||CURRENT);
   r=r||CURRENT; if(!r)return;
   if(r.result!=="PASS"){alert("Certificates are issued for PASSED units only. This unit is "+(r.result||"not passed")+".");return;}
   const css=`@page{size:A4;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
@@ -1214,8 +1275,9 @@ function fullReportHTML(r){
   </div>
   <footer>© YesAgain Group · Yes Check QC · Generated ${escv(new Date().toLocaleString())} from the central audit store · Verify: yesagain100.github.io/qc-records</footer>`;
 }
-function printFullReport(r){
+async function printFullReport(r){
   r=r||CURRENT; if(!r)return;
+  await ensureSnapshotsForSerial(r.serial);   // the report walks the unit's whole history
   const css=`@page{size:A4;margin:12mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2438;font-size:11px;line-height:1.45}
@@ -1359,8 +1421,9 @@ function marketplaceProofHTML(r){
     <div class="qr">${certQRSvg(qrUrl)}</div>
   </div>`;
 }
-function printMarketplaceProof(r){
+async function printMarketplaceProof(r){
   r=latestForSerial(r||CURRENT); if(!r)return;
+  await ensureSnapshot(r);
   if(r.result!=="PASS"){alert("Marketplace Test Proof is issued for PASSED units only. This unit's latest test is "+(r.result||"not passed")+".");return;}
   const css=`@page{size:A4;margin:12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -1442,7 +1505,8 @@ function testCertHTML(r){
     <div class="ccopy">© YesAgain Group · Yes Check QC. Records the device's condition and the checks performed at the time of inspection.</div>
   </div>`;
 }
-function printTestCert(r){
+async function printTestCert(r){
+  await ensureSnapshot(r||CURRENT);
   r=r||CURRENT; if(!r)return;
   const css=`@page{size:A4;margin:11mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
     .tcert{width:100%;border:3px solid #112747;border-radius:6px;padding:18px 22px}
@@ -1564,7 +1628,8 @@ document.getElementById("devMobile").onclick=()=>setMode("mobile");
 loadCols();renderHead();
 document.getElementById("colsBtn").onclick=e=>{e.stopPropagation();const m=document.getElementById("colMgr");const show=!m.classList.contains("show");m.classList.toggle("show",show);if(show)renderColMgr();};
 document.addEventListener("click",e=>{if(!e.target.closest("#colMgr")&&e.target.id!=="colsBtn")document.getElementById("colMgr").classList.remove("show");});
-["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
+["q","fResult","fGrade","fTech","fWh","fDept","hideTest","uniqSerial","dFrom","dTo"]
+  .forEach(id=>document.getElementById(id).addEventListener("input",()=>{SHOWN=PAGE_ROWS;render();}));
 document.getElementById("reload").onclick=load;document.getElementById("csv").onclick=csv;
 
 // ---- login gate (same Yes Check accounts via app_login) ---------------------
