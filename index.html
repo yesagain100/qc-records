@@ -739,9 +739,18 @@ function openRowObj(r){if(!r)return;CURRENT=r;
 function testExecHTML(r){
   const d=(r._raw&&r._raw.snapshot&&r._raw.snapshot.details)||(r.snapshot&&r.snapshot.details);
   if(!d) return "";
+  // NOTE on "battery_drain" vs "battery": the drain test used to be saved under the
+  // same "battery" key as the unit's static hardware facts (health%/cycles/condition),
+  // which silently wiped its ran/duration_s/verdict before every upload — every record
+  // showed "NOT RUN" even when the test genuinely ran and passed (fixed upstream in the
+  // native app, commit 99d0df8, "Record that the battery drain test ran"). The fix gives
+  // the drain test its own key, battery_drain, so it can no longer collide with the
+  // hardware-facts object. Records saved before that fix shipped will correctly show
+  // "NOT RUN" here (the real result from those sessions was never recoverable), not
+  // because the test didn't run, but because there is no way to know from that data.
   const TESTS=[["thermal","Thermal / CPU stress"],["ram","Memory (RAM)"],["ssd","Storage (SSD)"],
-    ["battcell","Battery cell balance"],["battery","Battery drain"],["perf","Performance benchmark"],
-    ["memstress","Memory under heat"],["thermalcycle","Thermal-shock cycler"]];
+    ["battcell","Battery cell balance"],["battery_drain","Battery drain"],["perf","Performance benchmark"],
+    ["memstress","Memory under heat (beta, opt-in)"],["thermalcycle","Thermal-shock cycler (beta, opt-in)"]];
   const fmtD=s=>{if(s==null||s<=0)return"—";s=Math.round(s);return s>=60?Math.floor(s/60)+"m "+(s%60)+"s":s+"s";};
   let any=false;
   const rows=TESTS.map(([id,name])=>{
@@ -1092,11 +1101,11 @@ function printCert(r){
 // snapshot.details — the same per-category "bands" shape the app itself writes.
 // Built for marketplace / supplier-dispute investigations where the unit that shipped
 // may not be a clean pass, and where the pre- vs post-remediation history matters.
-const REPORT_CAT_LABELS={battery:"Battery & charging",battcell:"Battery cell balance",
-  ssd:"Storage / SSD (SMART)",ram:"Memory (RAM)",memstress:"Memory under heat",
-  thermal:"Thermal & cooling",thermalcycle:"Thermal-shock cycler",perf:"Performance benchmark",
+const REPORT_CAT_LABELS={battery:"Battery & charging",battery_drain:"Battery drain test",battcell:"Battery cell balance",
+  ssd:"Storage / SSD (SMART)",ram:"Memory (RAM)",memstress:"Memory under heat (beta, opt-in)",
+  thermal:"Thermal & cooling",thermalcycle:"Thermal-shock cycler (beta, opt-in)",perf:"Performance benchmark",
   ports:"Ports / USB",camera:"Camera",trackpad:"Trackpad",audio:"Audio"};
-const REPORT_CAT_ORDER=["battery","battcell","thermal","thermalcycle","perf","memstress","ssd","ram","ports","camera","trackpad","audio"];
+const REPORT_CAT_ORDER=["battery","battery_drain","battcell","thermal","thermalcycle","perf","memstress","ssd","ram","ports","camera","trackpad","audio"];
 const REPORT_STATUS_COLOR={normal:"var(--ok,#1d9e75)",pass:"var(--ok,#1d9e75)",ok:"var(--ok,#1d9e75)",
   watch:"var(--watch,#c98a12)",abnormal:"var(--bad,#c0392b)",fail:"var(--bad,#c0392b)",bad:"var(--bad,#c0392b)",
   na:"#8a97ad","":"#8a97ad"};
