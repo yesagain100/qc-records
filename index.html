@@ -437,25 +437,36 @@ async function load(){
     // through until a short page signals the end. Works at any table size.
     // Cursor (seek) pagination, NOT offset: offset=N makes Postgres scan-and-discard N rows
     // before every page, which gets slower as the table grows — at ~14k rows (offset 5000+)
-    // this started blowing Supabase's statement timeout and returning HTTP 500, killing the
-    // whole load (proven live: offset pagination failed with Postgres error 57014 "canceling
-    // statement due to statement timeout" at offset=5000). Seeking by (tested_at,id) instead
-    // is an indexed range scan on every page regardless of how deep it is — verified fetching
-    // all 13,995 rows across 14 pages with zero timeouts.
+    // this blew Supabase's statement timeout outright (Postgres error 57014), killing the
+    // whole load. Seeking by (tested_at,id) fixes the scan-cost part of that.
+    // PAGE size is separately capped at 200, NOT 1000: each row's `snapshot` column carries
+    // the full nested test-detail JSON, so a 1000-row page is ~7MB — proven live to be
+    // BORDERLINE on the statement timeout even on page 1 with no filter at all (repeated
+    // sampling: sometimes 2-5s and fine, sometimes 500 "canceling statement due to statement
+    // timeout" — load-dependent, not deterministic). 200 rows/page stayed at 1-2s across 71
+    // consecutive pages (14,012 rows) with zero failures. A 2x retry on a transient page
+    // failure absorbs the odd slow tick without failing the whole load over one bad page.
     const table=wantMode==="mobile"?"mobile_audits":"audits";
-    const PAGE=1000; let all=[], cursorTs=null, cursorId=null, pages=0;
+    const PAGE=200; let all=[], cursorTs=null, cursorId=null, pages=0;
     for(;;){
       const filt=cursorTs===null?"":
         `&or=(tested_at.lt.${encodeURIComponent(cursorTs)},and(tested_at.eq.${encodeURIComponent(cursorTs)},id.lt.${cursorId}))`;
-      const res=await fetch(`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-      if(!res.ok)throw new Error("HTTP "+res.status);
-      const batch=await res.json();
+      const url=`${SUPA}/rest/v1/${table}?select=*&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
+      let batch=null, lastErr=null;
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          const res=await fetch(url,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+          if(!res.ok){lastErr=new Error("HTTP "+res.status); if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw lastErr;}
+          batch=await res.json();
+          break;
+        }catch(e){lastErr=e; if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw e;}
+      }
       all=all.concat(batch);
       if(batch.length<PAGE) break;          // last (short) page → done
       const last=batch[batch.length-1];
       cursorTs=last.tested_at; cursorId=last.id;
       pages++;
-      if(pages>500) break;                  // hard safety stop
+      if(pages>2000) break;                 // hard safety stop
     }
     if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
     LOADING=false;
