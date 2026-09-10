@@ -287,7 +287,9 @@ const SNAP_FIELDS=["serial","timestamp","model","model_identifier","year","chip"
   "fault1","fault2","fault3","fault4","fault5","fault6"];
 const LIST_COLS=["id","serial","tested_at","created_at","technician","result","grade","colour",
   "perf_score","perf_result","battery_health","battery_cycles","storage_total_gb","wifi_ssid",
-  "macos","notes","failed_categories","screen_issues","defects","client_uuid","test_number","entity"];
+  "macos","notes","failed_categories","screen_issues","defects","client_uuid","test_number","entity",
+  "status"];   // draft | final (2026-09-10) — an in-progress unit reads as its real result
+              // otherwise (a checklist FAIL from a genuinely-incomplete check looks final)
 function listSelect(){
   return LIST_COLS.concat(SNAP_FIELDS.map(f=>`s_${f}:snapshot->>${f}`)).join(",");
 }
@@ -343,7 +345,11 @@ function flat(r){const s=r.snapshot||{};
     warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
     app_build:s.app_build||"",app_kind:s.app_kind||"",
     grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
-    result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
+    status:r.status||"final",
+    // A draft's raw result (often FAIL, from a genuinely-failing checklist item like
+    // low battery health) isn't the unit's real verdict yet — QC hasn't finished it.
+    result:(r.status==="draft")?"INCOMPLETE":normResult(r.result||s.result),
+    result_raw:r.result||s.result||"",
     batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
     batt_cond:r.battery_condition||s.battery_condition||"",colour:r.colour||s.colour||"",
     storage:num(r.storage_total_gb??s.storage_total_gb),wifi:r.wifi_ssid||s.wifi_ssid||"",
