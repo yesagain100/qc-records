@@ -185,7 +185,7 @@
       <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
-      <select id="fDept"><option value="">All groups</option></select>
+      <select id="fDept"><option value="">All departments</option></select>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="const t=new Date().toISOString().slice(0,10);document.getElementById('dFrom').value=t;document.getElementById('dTo').value=t;render()" title="Filter to today's tests" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">Today</button><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
@@ -225,6 +225,20 @@ async function loadLotSerials(){
     if(r.ok){LOT_SERIALS=await r.json();
       if(document.getElementById("lotTab").style.display!=="none")renderLotReport();}
   }catch(e){/* table may predate the migration — the lot report still works, minus claims */}
+}
+// The department list is admin-managed in the app (Goods-in/Assembly/Technical/QC/
+// Returns/Admin, or whatever a site renames/adds) — read it from the SAME table the
+// app itself reads (see qc_server.py:list_departments), so a group added on a
+// station shows up in this filter without editing this page. Falls back to whatever
+// department values already appear in the fetched records if the table isn't
+// reachable, so the filter still works if this table predates the site's DB.
+let DEPARTMENTS=[];
+async function loadDepartments(){
+  try{
+    const r=await fetch(`${SUPA}/rest/v1/departments?select=id,name&order=sort`,
+      {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    if(r.ok) DEPARTMENTS=await r.json();
+  }catch(e){/* filter falls back to deriving options from the records themselves */}
 }
 const TEST_MARKERS=["PUBKEY","VERIFY","E2E","DEMO","SAMPLE","TEST-"];
 const isTest=r=>{const s=(r.serial||"").toUpperCase(),t=(r.technician||"").toLowerCase();
@@ -541,7 +555,7 @@ async function load(){
       const first=!acc.length;
       acc=acc.concat(batch.map(shape));
       RAW=acc; fillTechs(); render();
-      if(first) loadLotSerials();
+      if(first){ loadLotSerials(); loadDepartments().then(render); }
     }, PAGE);
     if(gen!==loadGen) return;
     LOADING=false; render();
@@ -590,10 +604,15 @@ function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(
   let opts='<option value="">All regions</option>'+["UAE","France","UK"].map(g=>`<option>${g}</option>`).join("");
   if(groups.has("Other"))opts+='<option>Other</option>';
   sel.innerHTML=opts; sel.value=keep;
-  // Groups come from the data, not a fixed list: a site may add or rename one.
+  // Departments come from the SAME table the app's login screen reads (loadDepartments) —
+  // every group that exists in the app shows up here, even ones with zero records yet.
+  // Falls back to deriving options from the records themselves if that table came back
+  // empty (offline, or a site predating it).
   const dsel=document.getElementById("fDept"),dkeep=dsel.value;
-  const depts=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.department).filter(Boolean))].sort();
-  dsel.innerHTML='<option value="">All groups</option>'+depts.map(d=>`<option>${escv(d)}</option>`).join("");
+  const deptOpts=DEPARTMENTS.length
+    ? DEPARTMENTS.map(d=>({id:d.id,name:d.name}))
+    : [...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.department).filter(Boolean))].sort().map(d=>({id:d,name:d}));
+  dsel.innerHTML='<option value="">All departments</option>'+deptOpts.map(d=>`<option value="${escv(d.id)}">${escv(d.name)}</option>`).join("");
   dsel.value=dkeep;}
 function current(){
   const q=document.getElementById("q").value.toLowerCase().trim();
@@ -1524,7 +1543,7 @@ function testCertHTML(r){
       ${kv("Model ID",snap.model_identifier)}${kv("Chip",r.chip)}${kv("Memory",r.memory?r.memory+" GB":"")}
       ${kv("Storage",r.storage?r.storage+" GB":"")}${kv("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).join(" / "))}
       ${kv("Battery",r.batt_h!=null?Math.min(100,r.batt_h)+"%"+(r.batt_c!=null?" · "+r.batt_c+" cycles":""):"")}
-      ${kv("Tested",when)}${kv("Technician",r.tech_disp)}${kv("Warehouse",r.warehouse)}${kv("Group",r.department)}
+      ${kv("Tested",when)}${kv("Technician",r.tech_disp)}${kv("Warehouse",r.warehouse)}${kv("Department",r.department_path||r.department)}
     </div>
     ${missing}
     <div class="tgrid">${groups}</div>
