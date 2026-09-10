@@ -186,7 +186,7 @@
       <select id="fTech"><option value="">All technicians</option></select>
       <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
       <select id="fDept"><option value="">All groups</option></select>
-      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
+      <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:5px">📅<input type="date" id="dFrom" title="From date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"> → <input type="date" id="dTo" title="To date" style="padding:8px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px"><button onclick="const t=new Date().toISOString().slice(0,10);document.getElementById('dFrom').value=t;document.getElementById('dTo').value=t;render()" title="Filter to today's tests" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">Today</button><button onclick="document.getElementById('dFrom').value='';document.getElementById('dTo').value='';render()" style="border:0;background:#eef2f8;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="hideTest" checked> <span title="Hides system self-test rows (PUBKEY-VERIFY, E2E bot, connectivity checks) so only real units show.">hide self-test rows</span></label>
       <label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="uniqSerial"> latest per serial (hide older re-tests)</label>
       <div style="position:relative"><button id="colsBtn">⚙ Columns</button><div id="colMgr"></div></div>
@@ -279,7 +279,7 @@ function techLabel(name,user){
 // downloads ~5 MB instead. The full snapshot is fetched for ONE record, when it is
 // opened (see ensureSnapshot).
 const SNAP_FIELDS=["serial","timestamp","model","model_identifier","year","chip","memory_gb",
-  "technician","technician_username","department","warehouse","tested_local","timezone",
+  "technician","technician_username","department","department_path","warehouse","tested_local","timezone",
   "app_build","app_kind","grade","display_grade","body_grade","result","battery_health",
   "battery_cycles","battery_condition","colour","storage_total_gb","wifi_ssid","lot_id","po",
   "supplier","sku","part_number","cpu_speed","cpu_cores","gpu_cores","kbd_layout","kbd_language",
@@ -342,6 +342,7 @@ function flat(r){const s=r.snapshot||{};
     model:s.model||"",year:s.year||"",chip:s.chip||"",memory:num(s.memory_gb),
     technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
     tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),department:s.department||"",
+    department_path:s.department_path||"",
     warehouse:s.warehouse||"",tested_local:s.tested_local||"",timezone:s.timezone||"",
     app_build:s.app_build||"",app_kind:s.app_kind||"",
     grade:(r.grade||s.grade||"").toUpperCase(),display_grade:s.display_grade||"",body_grade:s.body_grade||"",
@@ -403,13 +404,14 @@ const ALLCOLS=[
   {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
   {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
   {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
+  {key:"department_path",label:"Stage path",sk:"department_path",html:r=>`<td class="muted" title="${(r.department_path||'').replace(/"/g,'&quot;')}">${r.department_path||r.department||""}</td>`},
   {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
   {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
   {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
   {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
 ];
-const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department","faults"];
-const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,lot_id:65,po:65,supplier:95,faults:240};
+const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department_path","faults"];
+const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,department_path:170,lot_id:65,po:65,supplier:95,faults:240};
 
 // ---- MOBILE (iPhone/iPad) mode — separate table, columns, and mapping ----------
 // Yes Check Mobile writes to mobile_units/mobile_audits (cloud/mobile_schema.sql) via
@@ -847,7 +849,7 @@ async function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
       ${row("Overall grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
       ${row("Display / Body grade",[r.display_grade,r.body_grade].filter(Boolean).map(escv).join(" / "))}
-      ${row("Tested",escv(fmtTested(r))+(r.timezone?` <span class="muted">(${escv(r.timezone)})</span>`:""))}${row("Technician",escv(r.technician)+(r.technician_username&&r.technician_username!==r.technician?` (@${escv(r.technician_username)})`:""))}${row("Warehouse",escv(r.warehouse))}${row("Department",escv(r.department))}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+escv(r.app_build)):"")}</dl>
+      ${row("Tested",escv(fmtTested(r))+(r.timezone?` <span class="muted">(${escv(r.timezone)})</span>`:""))}${row("Technician",escv(r.technician)+(r.technician_username&&r.technician_username!==r.technician?` (@${escv(r.technician_username)})`:""))}${row("Warehouse",escv(r.warehouse))}${row("Stage path",escv(r.department_path||r.department))}${row("Tested with",r.app_build?((r.app_kind==="legacy"?"Yes Check Legacy":"Yes Check")+" · build "+escv(r.app_build)):"")}</dl>
     <div class="sec">Specification</div><dl class="kv">
       ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("Year",escv(r.year))}${row("Chip",escv(r.chip))}
       ${row("CPU speed",escv(r.cpu_speed))}${row("CPU / GPU cores",[r.cpu_cores,r.gpu_cores].filter(Boolean).map(escv).join(" / "))}
