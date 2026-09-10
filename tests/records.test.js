@@ -142,3 +142,50 @@ test("the table renders a window, not fourteen thousand rows", () => {
   assert.ok(ctx.rowsToRender(rows, 200).length <= 200);
   assert.equal(ctx.rowsToRender(rows.slice(0, 12), 200).length, 12, "a short list renders whole");
 });
+
+// --------------------------------------------------------- progressive loading
+// The first page of records is back in ~2 s; the whole table takes ~28 s over 15
+// sequential pages. Nothing may wait for the last page before the first is shown.
+function pager(pages) {
+  const calls = [];
+  const fetchPage = async cursor => { calls.push(cursor); return pages[calls.length - 1] || []; };
+  return { calls, fetchPage };
+}
+const rowsFor = (n, from) => Array.from({ length: n }, (_, i) =>
+  ({ id: "id" + (from + i), tested_at: "2026-09-" + String(30 - Math.floor((from + i) / 1000)).padStart(2, "0") }));
+
+test("each page is handed over as it lands, newest first, with the cursor of the page before", async () => {
+  const ctx = load(sandbox(), "fetchPages");
+  const p1 = rowsFor(3, 0), p2 = rowsFor(3, 3), p3 = rowsFor(1, 6);
+  const { calls, fetchPage } = pager([p1, p2, p3]);
+  const got = [];
+  await ctx.fetchPages(fetchPage, batch => { got.push(batch.length); }, 3);
+  assert.deepEqual(got, [3, 3, 1], "every page reaches the table, in order");
+  assert.equal(calls[0], null, "the first page starts from the newest record");
+  assert.deepEqual(calls[1], { ts: p1[2].tested_at, id: p1[2].id }, "page 2 continues from page 1's last row");
+  assert.equal(calls.length, 3, "a short page is the end — no extra request");
+});
+
+test("the first page is on screen before the second has arrived", async () => {
+  const ctx = load(sandbox(), "fetchPages");
+  let releasePage2, shownBeforePage2 = null, painted = 0;
+  const page2 = new Promise(r => { releasePage2 = r; });
+  const fetchPage = async cursor => {
+    if (cursor === null) return rowsFor(2, 0);
+    shownBeforePage2 = painted;                 // what the tech sees while page 2 is in flight
+    return page2;
+  };
+  const done = ctx.fetchPages(fetchPage, () => { painted++; }, 2);
+  await new Promise(r => setTimeout(r, 0));
+  releasePage2(rowsFor(1, 2));
+  await done;
+  assert.equal(shownBeforePage2, 1, "page 1 was painted while page 2 was still loading");
+  assert.equal(painted, 2);
+});
+
+test("a load superseded mid-way stops asking for pages", async () => {
+  const ctx = load(sandbox(), "fetchPages");
+  const { calls, fetchPage } = pager([rowsFor(2, 0), rowsFor(2, 2), rowsFor(1, 4)]);
+  await ctx.fetchPages(fetchPage, () => false, 2);   // onPage says: a newer load started
+  assert.equal(calls.length, 1);
+});

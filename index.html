@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8"><link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YesAgain — QC Records</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -509,6 +509,7 @@ async function load(){
   // a fast iPhone fetch that started after it, silently showing the wrong dataset).
   const gen=++loadGen, wantMode=MODE;
   LOADING=true;
+  let acc=[];                               // this load's rows (RAW may still hold the last load's)
   try{
     // Fetch ALL records — no cap. PostgREST returns at most 1000 rows per request, so page
     // through until a short page signals the end. Works at any table size.
@@ -518,42 +519,60 @@ async function load(){
     // whole load. Seeking by (tested_at,id) fixes the scan-cost part of that.
     // 1000 rows a page (PostgREST's own maximum): the statement timeouts that once forced
     // 200 came from shipping every row's `snapshot` JSONB, not from the row count — the
-    // list no longer asks for it, so a full page is ~360KB instead of ~7MB. A 2x retry on
+    // list no longer asks for it, so a full page is ~1.6MB (~225KB gzipped) instead of ~7MB. A 2x retry on
     // a transient page failure absorbs the odd slow tick without failing the whole load.
     // Mobile is a separate, tiny table — it stays on select=* (nothing to gain).
     const table=wantMode==="mobile"?"mobile_audits":"audits";
     const sel=wantMode==="mobile"?"*":listSelect();
-    const PAGE=1000; let all=[], cursorTs=null, cursorId=null, pages=0;
-    for(;;){
-      const filt=cursorTs===null?"":
-        `&or=(tested_at.lt.${encodeURIComponent(cursorTs)},and(tested_at.eq.${encodeURIComponent(cursorTs)},id.lt.${cursorId}))`;
-      const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
-      let batch=null, lastErr=null;
-      for(let attempt=0;attempt<3;attempt++){
-        try{
-          const res=await fetch(url,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-          if(!res.ok){lastErr=new Error("HTTP "+res.status); if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw lastErr;}
-          batch=await res.json();
-          break;
-        }catch(e){lastErr=e; if(attempt<2){await new Promise(r=>setTimeout(r,600));continue;} throw e;}
-      }
-      all=all.concat(batch);
-      if(batch.length<PAGE) break;          // last (short) page → done
-      const last=batch[batch.length-1];
-      cursorTs=last.tested_at; cursorId=last.id;
-      pages++;
-      if(pages>2000) break;                 // hard safety stop
-    }
-    if(gen!==loadGen) return;               // a newer load() has since started — discard this stale result
-    LOADING=false;
-    RAW=wantMode==="mobile"?all.map(flatMobile):all.map(r=>flat(unslim(r)));fillTechs();render();
-    loadLotSerials();
+    const PAGE=1000;
+    const shape=wantMode==="mobile"?flatMobile:r=>flat(unslim(r));
+    // Paint as pages land: the newest 1000 records are on screen in ~2 s while the
+    // rest keep arriving (the whole table is ~15 pages, ~28 s end to end).
+    await fetchPages(cursor=>fetchPageWithRetry(table,sel,PAGE,cursor), batch=>{
+      if(gen!==loadGen) return false;       // a newer load() has since started — stop
+      const first=!acc.length;
+      acc=acc.concat(batch.map(shape));
+      RAW=acc; fillTechs(); render();
+      if(first) loadLotSerials();
+    }, PAGE);
+    if(gen!==loadGen) return;
+    LOADING=false; render();
   }catch(e){
     if(gen!==loadGen) return;               // superseded — don't show a stale error over newer (possibly successful) data
     LOADING=false;
     const el=document.getElementById("err");el.style.display="block";
-    el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
-    document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';}
+    if(acc.length){                         // pages this load already showed stay usable
+      el.textContent="Only the newest "+acc.length+" records loaded ("+e.message+"). Refresh to load the rest.";
+      render();
+    }else{
+      el.textContent="Couldn't load records: "+e.message+". Check the connection and Refresh.";
+      document.getElementById("rows").innerHTML='<tr><td colspan="12" class="empty">No data.</td></tr>';
+    }}
+}
+// Newest-first seek through the table by (tested_at,id), handing each page to onPage the
+// moment it arrives. onPage returning false stops the walk (the load was superseded).
+async function fetchPages(fetchPage,onPage,PAGE){
+  let cursor=null;
+  for(let pages=0;pages<2000;pages++){      // hard safety stop
+    const batch=await fetchPage(cursor);
+    if(onPage(batch)===false) return;
+    if(batch.length<PAGE) return;           // last (short) page → done
+    const last=batch[batch.length-1];
+    cursor={ts:last.tested_at,id:last.id};
+  }
+}
+async function fetchPageWithRetry(table,sel,PAGE,cursor){
+  const filt=cursor===null?"":
+    `&or=(tested_at.lt.${encodeURIComponent(cursor.ts)},and(tested_at.eq.${encodeURIComponent(cursor.ts)},id.lt.${cursor.id}))`;
+  const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
+  for(let attempt=0;;attempt++){
+    try{
+      const res=await fetch(url,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      if(res.ok) return await res.json();
+      if(attempt>=2) throw new Error("HTTP "+res.status);
+    }catch(e){ if(attempt>=2) throw e; }
+    await new Promise(r=>setTimeout(r,600));
+  }
 }
 function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.tech_disp).filter(Boolean))].sort();
   document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
@@ -607,8 +626,11 @@ function render(){
   const fail=uniq.filter(r=>r.result==="FAIL"||r.result==="REJECT").length;
   const wk=Date.now()-7*864e5,last7=real.filter(r=>{const t=Date.parse(r.tested_at);return t&&t>=wk;}).length;
   const passRate=uniq.length?Math.round(pass/uniq.length*100):0;
-  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"],[units,"distinct units"],[passRate+"%","pass rate (units)"],[fail,"fail / reject (units)"],[last7,"tests in last 7 days"]]
-    .map(([n,l])=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+  // While older pages are still arriving these are partial counts — say so on the cards
+  // themselves, not only in the footer below the fold.
+  const part=LOADING&&real.length?" · loading…":"";
+  document.getElementById("stats").innerHTML=[[real.length,"QC runs (filtered)"+part],[units,"distinct units"+part],[passRate+"%","pass rate (units)"+part],[fail,"fail / reject (units)"+part],[last7,"tests in last 7 days"+part]]
+    .map(([n,l])=>`<div class="stat"${part?' style="opacity:.6"':""}><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
   const cols=visCols(),tb=document.getElementById("rows");
   if(!ROWS.length)tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="empty">${LOADING?"Loading…":"No records match."}</td></tr>`;
   else tb.innerHTML=rowsToRender(ROWS,SHOWN).map((r,i)=>`<tr onclick="openModal(${i})"><td onclick="event.stopPropagation()" style="width:70px;white-space:nowrap;overflow:visible"><input type="checkbox" onchange="toggleSel('${r.id}',this.checked)" ${SEL.has(r.id)?"checked":""}> <button class="prbtn" onclick="printRow(event,'${r.id}')" title="Print this label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button></td>`+cols.map(c=>c.html(r)).join("")+`</tr>`).join("");
@@ -616,7 +638,7 @@ function render(){
   const shown=Math.min(SHOWN,ROWS.length);
   const more=ROWS.length-shown;
   document.getElementById("foot").innerHTML=
-    `${ROWS.length} record(s)${more>0?` · showing ${shown}`:""} · live from Supabase · ${new Date().toLocaleString()}`
+    `${ROWS.length} record(s)${LOADING?" so far — still loading older records…":""}${more>0?` · showing ${shown}`:""} · live from Supabase · ${new Date().toLocaleString()}`
     +(more>0?` · <a href="#" onclick="showMore();return false;">show ${Math.min(more,PAGE_ROWS)} more</a>`:"");
   renderAnalysis(real);
   if(document.getElementById("lotTab").style.display!=="none")renderLotReport();
