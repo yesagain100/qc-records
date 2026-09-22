@@ -546,7 +546,7 @@ async function load(){
     // Mobile is a separate, tiny table — it stays on select=* (nothing to gain).
     const table=wantMode==="mobile"?"mobile_audits":"audits";
     const sel=wantMode==="mobile"?"*":listSelect();
-    const PAGE=1000;
+    const PAGE=400;
     const shape=wantMode==="mobile"?flatMobile:r=>flat(unslim(r));
     // Paint as pages land: the newest 1000 records are on screen in ~2 s while the
     // rest keep arriving (the whole table is ~15 pages, ~28 s end to end).
@@ -578,7 +578,8 @@ async function fetchPages(fetchPage,onPage,PAGE){
   for(let pages=0;pages<2000;pages++){      // hard safety stop
     const batch=await fetchPage(cursor);
     if(onPage(batch)===false) return;
-    if(batch.length<PAGE) return;           // last (short) page → done
+    if(batch.length<(batch._limit||PAGE)) return;   // last (short) page → done
+                                                    // (_limit = what the retry settled on)
     const last=batch[batch.length-1];
     cursor={ts:last.tested_at,id:last.id};
   }
@@ -586,14 +587,21 @@ async function fetchPages(fetchPage,onPage,PAGE){
 async function fetchPageWithRetry(table,sel,PAGE,cursor){
   const filt=cursor===null?"":
     `&or=(tested_at.lt.${encodeURIComponent(cursor.ts)},and(tested_at.eq.${encodeURIComponent(cursor.ts)},id.lt.${cursor.id}))`;
-  const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${PAGE}${filt}`;
+  // A statement timeout is NOT transient: the same request costs the same every time,
+  // so retrying the identical URL just burns the retries and fails the whole load
+  // (this is what produced "Couldn't load records: HTTP 500"). Each page of this query
+  // costs roughly 1.4 s of baseline plus ~0.08 s per snapshot field per 500 rows, so
+  // the way out of a timeout is a SMALLER page, not another go at the same one.
+  let lim=PAGE;
   for(let attempt=0;;attempt++){
+    const url=`${SUPA}/rest/v1/${table}?select=${sel}&order=tested_at.desc,id.desc&limit=${lim}${filt}`;
     try{
       const res=await fetch(url,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-      if(res.ok) return await res.json();
-      if(attempt>=2) throw new Error("HTTP "+res.status);
-    }catch(e){ if(attempt>=2) throw e; }
-    await new Promise(r=>setTimeout(r,600));
+      if(res.ok){ const rows=await res.json(); rows._limit=lim; return rows; }
+      if(attempt>=4) throw new Error("HTTP "+res.status);
+    }catch(e){ if(attempt>=4) throw e; }
+    lim=Math.max(50,Math.floor(lim/2));
+    await new Promise(r=>setTimeout(r,400));
   }
 }
 function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.tech_disp).filter(Boolean))].sort();
