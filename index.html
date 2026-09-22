@@ -322,17 +322,31 @@ function unslim(row){
 // The full snapshot for ONE record, fetched the first time it is opened and kept on the
 // row. Everything that reads snapshot.details (the modal, the reports, the certificates)
 // goes through here.
+// `details` is moving out of the snapshot JSONB into its own column. Until that
+// migration runs the column does not exist, and asking for it is a hard 400 — so
+// probe once, remember the answer, and read whichever shape this database has.
+let DETAILS_COL=true;
 async function ensureSnapshot(r){
   const raw=r&&r._raw;
   if(!raw||raw._full) return r;
   try{
     const table=MODE==="mobile"?"mobile_audits":"audits";
-    const res=await fetch(`${SUPA}/rest/v1/${table}?id=eq.${encodeURIComponent(raw.id)}&select=snapshot`,
+    // `details` is moving OUT of the snapshot JSONB into its own column: nesting it
+    // there is what made every row ~174 KB and eventually timed this list out. Ask for
+    // both and merge — records written before the move keep their nested copy, records
+    // written after have the column, and this reads either without caring which.
+    const get=sel=>fetch(`${SUPA}/rest/v1/${table}?id=eq.${encodeURIComponent(raw.id)}&select=${sel}`,
       {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+    // DETAILS_COL flips to false the first time the server says the column isn't there,
+    // so this costs one failed request in total, not one per record.
+    let res = DETAILS_COL ? await get("snapshot,details") : await get("snapshot");
+    if(!res.ok && DETAILS_COL){ DETAILS_COL=false; res=await get("snapshot"); }
     if(res.ok){
       const rows=await res.json();
-      if(Array.isArray(rows)&&rows[0]&&rows[0].snapshot){
-        raw.snapshot=Object.assign({},raw.snapshot,rows[0].snapshot);
+      const row=Array.isArray(rows)?rows[0]:null;
+      if(row&&(row.snapshot||row.details)){
+        raw.snapshot=Object.assign({},raw.snapshot,row.snapshot||{});
+        if(row.details&&!raw.snapshot.details) raw.snapshot.details=row.details;
         raw._full=true;                        // only on success: a dropped connection retries
       }
     }
