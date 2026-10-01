@@ -2181,11 +2181,17 @@ async function verifyView(serial,testId){
   const B=document.getElementById("vBody");
   try{
     const q=encodeURIComponent(serial);
-    let rows;
+    const H={headers:{apikey:KEY,Authorization:"Bearer "+KEY}};
+    let rows, mobile=false;
+    // iPhones and iPads are tested by Yes Check Mobile and stored in mobile_audits: when no
+    // MacBook audit matches, look there before saying "not found" / "pending".
+    const tryMobile=async(path)=>{const m=await (await fetch(`${SUPA}/rest/v1/mobile_audits?${path}`,H)).json();
+      if(Array.isArray(m)&&m.length){rows=m;mobile=true;return true;}return false;};
     if(testId){
       // EXACT-test path: the certificate carries this test's id (client_uuid). Resolve to
       // THIS test only — so a re-tested serial can never show an older/contradicting result.
       rows=await (await fetch(`${SUPA}/rest/v1/audits?client_uuid=eq.${encodeURIComponent(testId)}&limit=1`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      if(!Array.isArray(rows)||!rows.length) await tryMobile(`client_uuid=eq.${encodeURIComponent(testId)}&limit=1`);
       if(!Array.isArray(rows)||!rows.length){
         // The test on this certificate hasn't reached the portal yet (offline queue / sync lag).
         // Show a NEUTRAL pending state — NEVER an older result for the same serial.
@@ -2200,15 +2206,19 @@ async function verifyView(serial,testId){
       if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
         rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
       }
+      if(!Array.isArray(rows)||!rows.length) await tryMobile(`serial=eq.${q}&order=tested_at.desc&limit=20`);
       if(!Array.isArray(rows)||!rows.length){
         B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
       }
     }
-    const r=rows.map(flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
+    const r=rows.map(mobile?flatMobile:flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
     const pass=r.result==="PASS";
     const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
     const when=(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
-    const specParts=[r.chip,r.memory?r.memory+"GB":"",r.storage?r.storage+"GB SSD":"",r.colour].filter(Boolean);
+    const passedChecks=mobile?Object.values(r.on_device||{}).filter(v=>v==="pass").length:0;
+    const colour=mobile?((r._raw&&(r._raw.colour||(r._raw.snapshot||{}).colour))||""):r.colour;
+    const specParts=mobile?[r.storage?(r.storage>=1000?Math.round(r.storage/1000)+" TB":r.storage+" GB"):"",colour,r.ios?"iOS "+r.ios:""].filter(Boolean)
+                          :[r.chip,r.memory?r.memory+"GB":"",r.storage?r.storage+"GB SSD":"",r.colour].filter(Boolean);
     B.innerHTML=`
       <div style="font-size:46px;line-height:1">${pass?"✅":"⚠️"}</div>
       <h2 style="margin:6px 0 2px;font-size:22px;color:${pass?"#1d9e75":"#d6453d"}">${pass?"Verified — Passed QC":"On record — did not pass"}</h2>
@@ -2220,6 +2230,7 @@ async function verifyView(serial,testId){
         ${vrow("Result",`<b style="color:${pass?"#1d9e75":"#d6453d"}">${escv(r.result||"—")}</b>`)}
         ${vrow("Grade",escv((r.grade?("Grade "+r.grade):"—")+(gl?" · "+gl:"")))}
         ${vrow("Inspected",escv(when||"—")+(r.warehouse?(" · "+escv(r.warehouse)):""))}
+        ${mobile&&passedChecks?vrow("Checks passed",escv(String(passedChecks))):""}
       </div>
       ${r.batt_h!=null?`<div style="margin-top:12px;padding:12px;background:#f3faf6;border:1px solid #d4ecdf;border-radius:12px">
         <div style="font-size:11px;font-weight:800;color:#5b6b82;letter-spacing:.4px">BATTERY HEALTH</div>
