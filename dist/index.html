@@ -749,8 +749,16 @@ const LIST_COLS=["id","serial","tested_at","created_at","technician","result","g
   "macos","notes","failed_categories","screen_issues","defects","client_uuid","test_number","entity",
   "status"];   // draft | final (2026-09-10) — an in-progress unit reads as its real result
               // otherwise (a checklist FAIL from a genuinely-incomplete check looks final)
+// MEASURED 5 Oct 2026: `snapshot->>field` does NOT avoid the cost of the snapshot. To read
+// one key Postgres has to DECOMPRESS the whole JSONB, server-side, on every row — over the
+// same 100 rows that was 648 ms, against 0.19 ms for columns in the table itself. The slim
+// select cut the download but made the database ~1,900x slower, and this one query was
+// burning 258 minutes of database time. `audits` now has a stored generated column
+// s_<field> for every SNAP_FIELD (computed once when a row is written), so the list reads
+// those and never touches the snapshot. The response has the same s_<field> keys as before,
+// so unslim() and everything after it are unchanged.
 function listSelect(){
-  return LIST_COLS.concat(SNAP_FIELDS.map(f=>`s_${f}:snapshot->>${f}`)).join(",");
+  return LIST_COLS.concat(SNAP_FIELDS.map(f=>`s_${f}`)).join(",");
 }
 // Turn the flat s_<field> columns back into the { snapshot: {...} } shape the rest of
 // the page reads, so nothing downstream needs to know the list is slim.

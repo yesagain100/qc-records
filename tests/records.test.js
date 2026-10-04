@@ -93,8 +93,18 @@ test("the list asks for every snapshot field the table actually renders", () => 
   // it to the query fails here instead of silently blanking a column in production.
   const used = new Set([...extractFn(html, "flat").matchAll(/\bs\.([a-z0-9_]+)/g)].map(m => m[1]));
   used.delete("details");
-  const missing = [...used].filter(f => !sel.includes(`snapshot->>${f}`));
+  const cols = new Set(sel.split(","));
+  const missing = [...used].filter(f => !cols.has(`s_${f}`));
   assert.deepEqual(missing, [], "not requested: " + missing.join(", "));
+});
+
+test("the list never extracts a field out of the snapshot", () => {
+  // Measured 5 Oct 2026: `snapshot->>field` makes Postgres decompress the whole JSONB on
+  // every row (648 ms per 100 rows, against 0.19 ms for a stored column), and a 400-row
+  // page was timing out with 57014. The list must read the stored s_<field> columns.
+  const ctx = load(sandbox(), "listSelect");
+  const sel = ctx.listSelect();
+  assert.ok(!sel.includes("snapshot"), "select must not touch the snapshot at all: " + sel);
 });
 
 test("a slim row flattens to exactly what the full row does", () => {
