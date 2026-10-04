@@ -182,7 +182,7 @@
     <div class="stats" id="stats"></div>
     <div class="controls">
       <select id="fResult"><option value="">All results</option><option>PASS</option><option>FAIL</option><option>REJECT</option><option>INCOMPLETE</option></select>
-      <select id="fGrade"><option value="">All grades</option><option>A</option><option>B</option><option>C</option><option>D</option></select>
+      <select id="fGrade"><option value="">All grades</option><option>AA</option><option>A</option><option>B+</option><option>B</option><option>C+</option><option>C</option><option>D</option></select>
       <select id="fTech"><option value="">All technicians</option></select>
       <select id="fWh"><option value="">All regions</option><option>UAE</option><option>France</option><option>UK</option></select>
       <select id="fDept"><option value="">All departments</option></select>
@@ -1659,7 +1659,7 @@ function certId(r){
   return "YC-"+String(r.serial||"").replace(/\s/g,"").slice(0,10)+(suf?"-"+suf:"");}
 function certQRSvg(url){try{const q=qrcode(0,'M');q.addData(url);q.make();return q.createSvgTag({cellSize:3,margin:0,scalable:true});}catch(e){return "";}}
 function certHTML(r){
-  const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
+  const gl={AA:"AA — premium",A:"A — like new","B+":"B+ — light wear",B:"B — light wear","C+":"C+ — visible wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
   const mid=(r._raw&&r._raw.snapshot&&r._raw.snapshot.model_identifier)||"";
   const cpu=r.cpu_cores?(r.cpu_cores+"-core"):"";
   const gpu=r.gpu_cores?(r.gpu_cores+"-core GPU"):"";
@@ -2221,7 +2221,7 @@ async function verifyView(serial,testId){
     }
     const r=rows.map(mobile?flatMobile:flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
     const pass=r.result==="PASS";
-    const gl={A:"A — like new",B:"B — light wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
+    const gl={AA:"AA — premium",A:"A — like new","B+":"B+ — light wear",B:"B — light wear","C+":"C+ — visible wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
     const when=(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
     const passedChecks=mobile?Object.values(r.on_device||{}).filter(v=>v==="pass").length:0;
     const colour=mobile?((r._raw&&(r._raw.colour||(r._raw.snapshot||{}).colour))||""):r.colour;
