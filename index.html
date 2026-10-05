@@ -46,7 +46,7 @@
   #bulkMenu .bm-i:hover{background:#f4f6fa}
   .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block;letter-spacing:.3px}
   .pill.PASS{background:#e4f6ec;color:var(--ok)}.pill.FAIL,.pill.REJECT{background:#fae3e3;color:var(--bad)}
-  .pill.INCOMPLETE{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
+  .pill.INCOMPLETE,.pill.REVIEW{background:#fbf0d8;color:var(--watch)}.pill.OTHER{background:#eef2f8;color:var(--muted)}
   .gr{font-weight:800}.gr.A{color:#1e9e57}.gr.B{color:#3b82c4}.gr.C{color:#c8881b}.gr.D{color:#cf3b3b}
   table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
   th,td{padding:9px 11px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -200,7 +200,7 @@
 
 <div class="modal" id="modal"><div class="card">
   <div class="top"><b id="mTitle"></b>
-    <select id="labelSize" onchange="localStorage.setItem('qcLabelSize',this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
+    <select id="labelSize" onchange="saveLabelSize(this.value)" title="Label size" style="margin-left:auto;border-radius:7px;padding:5px 8px;border:1px solid #34527a;background:#1c3a5e;color:#fff;font-size:12px"></select>
     <button id="printLabelBtn" onclick="printLabel()">🖨 Print label</button><button id="printCertBtn" onclick="printCert()" title="Certificate of Quality (A4) — passed units only">📄 Certificate</button><button id="printReportBtn" onclick="printFullReport()" title="Full Test Report (A4) — every parameter, every test session on record, any result">📋 Full Report</button><button id="printMktBtn" onclick="printMarketplaceProof()" title="Marketplace Test Proof (A4) — Refurbed-style functional checklist, latest test only, passed units only">🛒 Marketplace Proof</button><button id="printTestCertBtn" onclick="printTestCert()" title="Full component test certificate (A4) — every check with its result. Issued for any result.">🔧 Test certificate</button><span class="x" onclick="closeModal()">×</span></div>
   <div class="body" id="mBody"></div>
 </div></div>
@@ -210,6 +210,7 @@
 <script src="lotreport.js"></script>
 <script src="xlsx.js"></script>
 <script src="certificate.js"></script>
+<script src="mobile.js"></script>
 <script>
 const SUPA="https://qulzvyhcpphntzuwyrnz.supabase.co";
 const KEY="sb_publishable_Cvk7Yshzceynd0jh9Znd6Q__Tearm51";
@@ -347,19 +348,45 @@ async function ensureSnapshot(r){
       {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
     // DETAILS_COL flips to false the first time the server says the column isn't there,
     // so this costs one failed request in total, not one per record.
-    let res = DETAILS_COL ? await get("snapshot,details") : await get("snapshot");
-    if(!res.ok && DETAILS_COL){ DETAILS_COL=false; res=await get("snapshot"); }
+    // A phone's detail lives in its snapshot: mobile_audits has no `details` column and is
+    // never asked for one. (It used to be — the 400 that came back switched DETAILS_COL off
+    // for the MacBook table too, for the rest of the visit.)
+    const mobile=table==="mobile_audits";
+    let res = mobile ? await get("snapshot,changes_from_previous")
+            : (DETAILS_COL ? await get("snapshot,details") : await get("snapshot"));
+    if(!res.ok && !mobile && DETAILS_COL){ DETAILS_COL=false; res=await get("snapshot"); }
     if(res.ok){
       const rows=await res.json();
       const row=Array.isArray(rows)?rows[0]:null;
       if(row&&(row.snapshot||row.details)){
         raw.snapshot=Object.assign({},raw.snapshot,row.snapshot||{});
         if(row.details&&!raw.snapshot.details) raw.snapshot.details=row.details;
+        if(row.changes_from_previous) raw.changes_from_previous=row.changes_from_previous;
         raw._full=true;                        // only on success: a dropped connection retries
       }
     }
   }catch(e){/* keep the slim fields we already have — the record stays readable */}
   return r;
+}
+// The same for several phone records at once (a sheet of labels is drawn from the label
+// saved with each test): 40 records a request instead of one each.
+async function ensureSnapshots(rows){
+  const need=(rows||[]).filter(r=>r&&r._raw&&!r._raw._full);
+  for(let i=0;i<need.length;i+=40){
+    const chunk=need.slice(i,i+40);
+    try{
+      const res=await fetch(`${SUPA}/rest/v1/mobile_audits?id=in.(${chunk.map(r=>encodeURIComponent(r._raw.id)).join(",")})&select=id,snapshot,changes_from_previous`,
+        {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      if(!res.ok) continue;
+      const got=new Map((await res.json()).map(x=>[x.id,x]));
+      chunk.forEach(r=>{const x=got.get(r._raw.id);
+        if(!x||!x.snapshot) return;
+        r._raw.snapshot=Object.assign({},r._raw.snapshot,x.snapshot);
+        if(x.changes_from_previous) r._raw.changes_from_previous=x.changes_from_previous;
+        r._raw._full=true;});
+    }catch(e){/* left unloaded: the caller says so instead of printing half a label */}
+  }
+  return rows;
 }
 // Every session on record for one serial, with full snapshots (the Full Test Report
 // walks the unit's whole history).
@@ -420,31 +447,31 @@ const specLine=r=>[r.chip,(r.memory?r.memory+"GB":""),(r.storage?r.storage+"GB":
 
 // ---- customizable table columns (show/hide + drag to reorder) ---------------
 const ALLCOLS=[
-  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
-  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
-  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
-  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
-  {key:"year",label:"Year",sk:"year",html:r=>`<td class="muted">${r.year||""}</td>`},
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${escv(fmtTested(r))}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${escv(r.warehouse)||"—"}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${escv(r.serial)||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${escv(r.model)||"—"}</td>`},
+  {key:"year",label:"Year",sk:"year",html:r=>`<td class="muted">${escv(r.year)}</td>`},
   {key:"memory",label:"RAM",sk:"memory",html:r=>`<td>${r.memory?r.memory+" GB":"—"}</td>`},
   {key:"storage",label:"SSD",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
-  {key:"colour",label:"Colour",sk:"colour",html:r=>`<td>${r.colour||"—"}</td>`},
-  {key:"sku",label:"YesAgain SKU",sk:"sku",html:r=>`<td class="mono">${r.sku||"—"}</td>`},
-  {key:"display_grade",label:"LCD grade",sk:"display_grade",html:r=>`<td class="gr ${r.display_grade}">${r.display_grade||"—"}</td>`},
-  {key:"body_grade",label:"Body grade",sk:"body_grade",html:r=>`<td class="gr ${r.body_grade}">${r.body_grade||"—"}</td>`},
-  {key:"grade",label:"Overall grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
-  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"colour",label:"Colour",sk:"colour",html:r=>`<td>${escv(r.colour)||"—"}</td>`},
+  {key:"sku",label:"YesAgain SKU",sk:"sku",html:r=>`<td class="mono">${escv(r.sku)||"—"}</td>`},
+  {key:"display_grade",label:"LCD grade",sk:"display_grade",html:r=>`<td class="gr ${escv(r.display_grade)}">${escv(r.display_grade)||"—"}</td>`},
+  {key:"body_grade",label:"Body grade",sk:"body_grade",html:r=>`<td class="gr ${escv(r.body_grade)}">${escv(r.body_grade)||"—"}</td>`},
+  {key:"grade",label:"Overall grade",sk:"grade",html:r=>`<td class="gr ${escv(r.grade)}">${escv(r.grade)||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${escv(r.result)||'OTHER'}">${escv(r.result)||"—"}</span></td>`},
   {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
-  {key:"chip",label:"CPU / Chip",sk:"chip",html:r=>`<td class="muted">${r.chip||"—"}</td>`},
-  {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${r.cpu_speed||"—"}</td>`},
-  {key:"cores",label:"CPU/GPU cores",html:r=>`<td class="muted">${(r.cpu_cores||r.gpu_cores)?((r.cpu_cores?r.cpu_cores+"C":"")+(r.gpu_cores?r.gpu_cores+"G":"")):"—"}</td>`},
-  {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${[r.kbd_layout,r.kbd_language].filter(Boolean).join(" ")||"—"}</td>`},
+  {key:"chip",label:"CPU / Chip",sk:"chip",html:r=>`<td class="muted">${escv(r.chip)||"—"}</td>`},
+  {key:"cpu_speed",label:"CPU speed",sk:"cpu_speed",html:r=>`<td class="muted">${escv(r.cpu_speed)||"—"}</td>`},
+  {key:"cores",label:"CPU/GPU cores",html:r=>`<td class="muted">${(r.cpu_cores||r.gpu_cores)?escv((r.cpu_cores?r.cpu_cores+"C":"")+(r.gpu_cores?r.gpu_cores+"G":"")):"—"}</td>`},
+  {key:"kbd",label:"Keyboard",html:r=>`<td class="muted">${escv([r.kbd_layout,r.kbd_language].filter(Boolean).join(" "))||"—"}</td>`},
   {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
-  {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${r.department||""}</td>`},
-  {key:"department_path",label:"Stage path",sk:"department_path",html:r=>`<td class="muted" title="${(r.department_path||'').replace(/"/g,'&quot;')}">${r.department_path||r.department||""}</td>`},
-  {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${r.lot_id||""}</td>`},
-  {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${r.po||""}</td>`},
-  {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${r.supplier||""}</td>`},
-  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
+  {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${escv(r.department)}</td>`},
+  {key:"department_path",label:"Stage path",sk:"department_path",html:r=>`<td class="muted" title="${escv(r.department_path)}">${escv(r.department_path||r.department)}</td>`},
+  {key:"lot_id",label:"Lot",sk:"lot_id",html:r=>`<td class="muted">${escv(r.lot_id)}</td>`},
+  {key:"po",label:"PO",sk:"po",html:r=>`<td class="muted">${escv(r.po)}</td>`},
+  {key:"supplier",label:"Supplier",sk:"supplier",html:r=>`<td class="muted">${escv(r.supplier)}</td>`},
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${escv(r.faults)}">${escv(r.faults)}</td>`},
 ];
 const DEFAULT_VIS=["tested_at","serial","model","memory","storage","colour","sku","display_grade","grade","result","batt","technician","warehouse","department_path","faults"];
 const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60,colour:95,sku:170,display_grade:85,body_grade:85,grade:90,result:95,batt:115,chip:150,cpu_speed:95,cores:90,kbd:95,technician:110,warehouse:100,department:85,department_path:170,lot_id:65,po:65,supplier:95,faults:240};
@@ -455,42 +482,47 @@ const DEFAULT_W={tested_at:140,serial:120,model:165,year:55,memory:60,storage:60
 // iPhone's fields (IMEI, iOS, activation lock, on-device Probe results) never sit blank
 // next to Mac-only ones (chip, memory, macOS) in the same row.
 let MODE="mac";                                          // "mac" | "mobile"
-function flatMobile(r){const s=r.snapshot||{};
-  const onDevice=r.on_device||s.on_device||{};
-  const failedTests=Object.entries(onDevice).filter(([,v])=>v==="fail").map(([k])=>k);
-  const faults=[r.failed_categories||s.failed_categories,r.defects||s.defects].filter(x=>x&&String(x).trim())
-    .flatMap(x=>String(x).split(";")).map(f=>f.trim()).filter(Boolean);
-  if(!faults.length&&failedTests.length)faults.push(...failedTests);
-  return{id:r.id,tested_at:r.tested_at||s.timestamp||r.created_at,serial:r.serial||s.serial||"",
-    model:s.model||r.model||"",imei:r.imei||s.imei||"",udid:r.udid||s.udid||"",
-    ios:r.ios||s.ios||"",storage:num(r.storage_total_gb??s.storage_total_gb),
-    technician:r.technician||s.technician||"",technician_username:s.technician_username||"",
-    tech_disp:techLabel(r.technician||s.technician||"", s.technician_username||""),
-    warehouse:r.entity||s.warehouse||s.entity||"",
-    grade:(r.grade||s.grade||"").toUpperCase(),result:normResult(r.result||s.result),result_raw:r.result||s.result||"",
-    batt_h:num(r.battery_health??s.battery_health),batt_c:num(r.battery_cycles??s.battery_cycles),
-    activation_locked:(r.activation_locked??s.activation_locked),managed:(r.managed??s.managed),
-    carrier_locked:(r.carrier_locked??s.carrier_locked),blacklisted:(r.blacklisted??s.blacklisted),
-    on_device:onDevice,photos:r.photo_count||s.photo_count||0,notes:r.notes||s.notes||"",
-    client_uuid:r.client_uuid||s.client_uuid||"",faults:[...new Set(faults)].join("; "),_raw:r};}
+// One mobile_audits row → a table row. The shaping itself is mobile.js (YCMobile.flat), so it
+// is covered by tests; this hands it the page's technician label and takes the list's slim
+// row or a whole one alike (unslim() leaves a whole row untouched).
+function flatMobile(r){return YCMobile.flat(unslim(r),techLabel);}
+const lockPill=(v,bad,good)=>v===true?`<span class="pill FAIL">${bad}</span>`:v===false?`<span class="pill PASS">${good}</span>`:"—";
+const toneInk={ok:"var(--ok)",warn:"var(--watch)",bad:"var(--bad)"};
+// Everything a phone record prints goes through escv: these rows arrive through a public
+// write path (the bench's publishable key), so nothing in them is trusted as markup.
 const MOBILECOLS=[
-  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${fmtTested(r)}</td>`},
-  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${r.warehouse||"—"}</td>`},
-  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${r.serial||"—"}</td>`},
-  {key:"model",label:"Model",sk:"model",html:r=>`<td>${r.model||"—"}</td>`},
-  {key:"imei",label:"IMEI",sk:"imei",html:r=>`<td class="mono">${r.imei||"—"}</td>`},
-  {key:"ios",label:"iOS",sk:"ios",html:r=>`<td class="muted">${r.ios||"—"}</td>`},
-  {key:"storage",label:"Storage",sk:"storage",html:r=>`<td>${r.storage?r.storage+" GB":"—"}</td>`},
-  {key:"grade",label:"Grade",sk:"grade",html:r=>`<td class="gr ${r.grade}">${r.grade||"—"}</td>`},
-  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${r.result||'OTHER'}">${r.result||"—"}</span></td>`},
+  {key:"tested_at",label:"Date",sk:"tested_at",html:r=>`<td class="muted">${escv(fmtTested(r))}</td>`},
+  {key:"warehouse",label:"Warehouse",sk:"warehouse",html:r=>`<td class="muted">${escv(r.warehouse)||"—"}</td>`},
+  {key:"serial",label:"Serial",sk:"serial",html:r=>`<td class="mono">${escv(r.serial)||"—"}</td>`},
+  {key:"model",label:"Model",sk:"model",html:r=>`<td>${escv(r.model)||"—"}</td>`},
+  {key:"imei",label:"IMEI",sk:"imei",html:r=>`<td class="mono">${escv(r.imei)||"—"}</td>`},
+  {key:"ios",label:"iOS",sk:"ios",html:r=>`<td class="muted">${escv(r.ios)||"—"}</td>`},
+  {key:"storage",label:"Storage",sk:"storage",html:r=>`<td>${escv(r.storage_text)||"—"}</td>`},
+  {key:"colour",label:"Colour",sk:"colour",html:r=>`<td>${escv(r.colour)||"—"}</td>`},
+  {key:"sku",label:"YesAgain SKU",sk:"sku",html:r=>`<td class="mono">${escv(r.sku)||"—"}</td>`},
+  {key:"grade",label:"Grade",sk:"grade",html:r=>`<td class="gr ${escv(r.grade)}">${escv(r.grade)||"—"}</td>`},
+  {key:"result",label:"Result",sk:"result",html:r=>`<td><span class="pill ${escv(r.result)||'OTHER'}">${escv(r.result)||"—"}</span></td>`},
   {key:"batt",label:"Battery",sk:"batt",html:r=>`<td>${battTxt(r)}</td>`},
-  {key:"activation_locked",label:"Activation Lock",html:r=>`<td>${r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
-  {key:"managed",label:"MDM / Managed",html:r=>`<td>${r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"activation_locked",label:"iCloud lock",html:r=>`<td>${lockPill(r.activation_locked,"LOCKED","off")}</td>`},
+  // Every phone on a bench is managed BY the bench while it is tested (Reset for customer takes
+  // that off), so "managed" alone is not a fault and is not painted as one. A customer's own
+  // MDM or an organisation (DEP) lock is a fail reason and shows under Faults.
+  {key:"managed",label:"MDM / Managed",html:r=>`<td>${r.managed===true?'<span class="pill OTHER" title="Managed while it was tested — the bench manages phones for testing, and Reset for customer removes it. An organisation (DEP) lock shows under Faults.">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"—"}</td>`},
+  {key:"carrier",label:"Carrier lock",sk:"carrier_words",html:r=>`<td title="${escv(r.carrier_words)}">${r.carrier==="locked"?'<span class="pill FAIL">LOCKED</span>':r.carrier==="clean"?'<span class="pill PASS">unlocked</span>':'<span class="muted">not checked</span>'}</td>`},
+  {key:"parts",label:"Parts & Service",sk:"parts",html:r=>`<td title="${escv(r.parts)}" style="color:${toneInk[r.parts_state]||"inherit"}">${escv(r.parts)||"—"}</td>`},
+  {key:"checks",label:"Tests passed",html:r=>`<td${r.checks_failed?' style="color:var(--bad);font-weight:600"':""}>${r.checks_total?r.checks_passed+" / "+r.checks_total:"—"}</td>`},
   {key:"technician",label:"Technician",sk:"tech_disp",html:r=>`<td>${escv(r.tech_disp)||"—"}</td>`},
-  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${(r.faults||'').replace(/"/g,'&quot;')}">${r.faults||""}</td>`},
+  {key:"department",label:"Dept",sk:"department",html:r=>`<td class="muted">${escv(r.department)}</td>`},
+  {key:"port",label:"Port",sk:"port",html:r=>`<td class="muted">${escv(r.port)||"—"}</td>`},
+  {key:"save_reason",label:"Saved because",sk:"save_reason",html:r=>`<td class="muted" title="${escv(r.save_reason)}">${escv(r.save_reason)||"—"}</td>`},
+  {key:"probe_version",label:"Probe",sk:"probe_version",html:r=>`<td class="muted">${escv(r.probe_version)||"—"}</td>`},
+  {key:"app_build",label:"Mac app build",sk:"app_build",html:r=>`<td class="muted mono">${escv(r.app_build)||"—"}</td>`},
+  {key:"test_number",label:"Test #",sk:"test_number",html:r=>`<td class="muted">${escv(r.test_number)}</td>`},
+  // What failed it (red), then what still needs a look (amber) — the same lines its label prints.
+  {key:"faults",label:"Faults",html:r=>`<td class="faults" title="${escv([r.faults,r.warnings].filter(Boolean).join("; "))}">${escv(r.faults)}${r.warnings?`<span style="color:var(--watch)">${r.faults?" · ":""}! ${escv(r.warnings)}</span>`:""}</td>`},
 ];
-const MOBILE_DEFAULT_VIS=["tested_at","serial","model","imei","ios","storage","grade","result","batt","activation_locked","managed","technician","warehouse","faults"];
-const MOBILE_DEFAULT_W={tested_at:140,warehouse:100,serial:120,model:150,imei:150,ios:80,storage:75,grade:70,result:95,batt:115,activation_locked:120,managed:120,technician:110,faults:240};
+const MOBILE_DEFAULT_VIS=["tested_at","serial","model","imei","ios","storage","colour","grade","result","batt","activation_locked","managed","carrier","parts","checks","technician","warehouse","save_reason","faults"];
+const MOBILE_DEFAULT_W={tested_at:140,warehouse:100,serial:120,model:140,imei:150,ios:70,storage:75,colour:95,sku:170,grade:65,result:95,batt:115,activation_locked:105,managed:115,carrier:105,parts:170,checks:95,technician:140,department:70,port:55,save_reason:150,probe_version:80,app_build:120,test_number:60,faults:300};
 
 function curCols(){return MODE==="mobile"?MOBILECOLS:ALLCOLS;}
 function curDefaultVis(){return MODE==="mobile"?MOBILE_DEFAULT_VIS:DEFAULT_VIS;}
@@ -535,6 +567,24 @@ function renderColMgr(){const m=document.getElementById("colMgr");
     el.ondrop=e=>{e.preventDefault();el.classList.remove("dragover");if(!dragK||dragK===k)return;
       const f=ORDER.indexOf(dragK);ORDER.splice(f,1);ORDER.splice(ORDER.indexOf(k),0,dragK);saveCols();renderColMgr();renderHead();render();};});}
 
+// What the phone list asks for. mobile_audits may or may not have a stored column for each
+// snapshot field the table shows (sql/mobile_list_columns.sql adds them): asked once per
+// visit, with the whole list of columns so a half-applied or older script counts as "no".
+// Without them the database reads the same fields out of each row's snapshot — the answer
+// is identical, it only works harder for it — so the page never depends on the script.
+let MOBILE_STORED=null;
+async function mobileListSelect(){
+  if(MOBILE_STORED===null){
+    try{
+      const r=await fetch(`${SUPA}/rest/v1/mobile_audits?select=${YCMobile.listSelect(true)}&limit=1`,
+        {headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+      if(r.ok) MOBILE_STORED=true;
+      else if(r.status===400||r.status===404) MOBILE_STORED=false;   // a column is missing
+      // anything else (timeout, 5xx) decides nothing: ask again on the next load
+    }catch(e){/* offline — the load itself will report it */}
+  }
+  return YCMobile.listSelect(MOBILE_STORED===true);
+}
 let loadGen=0;   // request-generation guard — see below
 // True while a load() for the CURRENT generation is still paging through Supabase (the
 // full table is ~11k+ rows, fetched 1000 at a time, so this can take several seconds).
@@ -565,9 +615,11 @@ async function load(){
     // 200 came from shipping every row's `snapshot` JSONB, not from the row count — the
     // list no longer asks for it, so a full page is ~1.6MB (~225KB gzipped) instead of ~7MB. A 2x retry on
     // a transient page failure absorbs the odd slow tick without failing the whole load.
-    // Mobile is a separate, tiny table — it stays on select=* (nothing to gain).
+    // The phone table gets the same treatment (5 Oct 2026): a saved phone test is ~16 KB,
+    // nearly all of it the snapshot, and select=* shipped every one of them whole.
     const table=wantMode==="mobile"?"mobile_audits":"audits";
-    const sel=wantMode==="mobile"?"*":listSelect();
+    const sel=wantMode==="mobile"?await mobileListSelect():listSelect();
+    if(gen!==loadGen) return;               // the mode changed while that was being asked
     const PAGE=400;
     const shape=wantMode==="mobile"?flatMobile:r=>flat(unslim(r));
     // Paint as pages land: the newest 1000 records are on screen in ~2 s while the
@@ -627,7 +679,7 @@ async function fetchPageWithRetry(table,sel,PAGE,cursor){
   }
 }
 function fillTechs(){const techs=[...new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>r.tech_disp).filter(Boolean))].sort();
-  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${t}</option>`).join("");
+  document.getElementById("fTech").innerHTML='<option value="">All technicians</option>'+techs.map(t=>`<option>${escv(t)}</option>`).join("");
   // Fixed region groups (UAE/France/UK) + "Other" only if some record doesn't map to one.
   const groups=new Set(RAW.filter(r=>!isTest(r._raw)).map(r=>regionGroup(r)).filter(Boolean));
   const sel=document.getElementById("fWh"),keep=sel.value;
@@ -657,7 +709,7 @@ function current(){
     if(fd&&(r.department||"")!==fd)return false;
     const d=(r.tested_at||"").slice(0,10);
     if(df&&d<df)return false;if(dt&&d>dt)return false;
-    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku,r.imei].join(" ").toLowerCase();if(!hay.includes(q))return false;}
+    if(q){const hay=[r.serial,r.model,r.technician,r.technician_username,r.lot_id,r.po,r.supplier,r.sku,r.imei,r.udid,r.model_number,r.colour].join(" ").toLowerCase();if(!hay.includes(q))return false;}
     return true;});
   // Latest-per-serial: keep only the most recent test for each serial (hide older re-tests).
   if(document.getElementById("uniqSerial").checked){
@@ -702,9 +754,13 @@ function render(){
 }
 function bars(map,color,limit){const ent=Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,limit||99);
   const mx=Math.max(1,...ent.map(e=>e[1]));
-  return ent.map(([k,v])=>`<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${color||'var(--navy)'}"></div></div><div class="v">${v}</div></div>`).join("")||'<div class="muted">No data.</div>';}
+  return ent.map(([k,v])=>`<div class="bar"><div class="lab" title="${escv(k)}">${escv(k)}</div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${color||'var(--navy)'}"></div></div><div class="v">${v}</div></div>`).join("")||'<div class="muted">No data.</div>';}
 // Split a record's faults into clean, normalised fault names (drop the "(...)" detail).
-function splitFaults(r){return (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean)
+function splitFaults(r){
+  // A phone's reasons are whole sentences ("Battery health 74% — below the 85% floor");
+  // its row carries the countable name of each (mobile.js, faultsOf).
+  if(Array.isArray(r.fault_tags)) return r.fault_tags;
+  return (r.faults||"").split(";").map(f=>f.trim()).filter(Boolean)
   .map(f=>f.replace(/\s*\(.*?\)\s*/g,"").replace(/^Category:\s*/i,"").trim()).filter(Boolean);}
 // A unit counts as defective if it failed/was rejected OR carries any recorded fault.
 function isDefective(r){return r.result==="FAIL"||r.result==="REJECT"||!!(r.faults&&r.faults.trim());}
@@ -713,7 +769,7 @@ function rateBars(map){const ent=Object.entries(map).filter(([k])=>k&&k!=="—")
     .sort((a,b)=>(b[1].fail/b[1].total-a[1].fail/a[1].total)||(b[1].total-a[1].total)).slice(0,12);
   if(!ent.length)return '<div class="muted">No lot / supplier recorded on these units yet — add it at intake.</div>';
   return ent.map(([k,v])=>{const pct=Math.round(v.fail/v.total*100),col=pct>=20?'var(--bad)':pct>=10?'var(--watch)':'var(--ok)';
-    return `<div class="bar"><div class="lab" title="${k}">${k}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="v" style="width:auto;min-width:92px">${pct}% <span class="muted" style="font-weight:500">(${v.fail}/${v.total})</span></div></div>`;}).join("");}
+    return `<div class="bar"><div class="lab" title="${escv(k)}">${escv(k)}</div><div class="track"><div class="fill" style="width:${pct}%;background:${col}"></div></div><div class="v" style="width:auto;min-width:92px">${pct}% <span class="muted" style="font-weight:500">(${v.fail}/${v.total})</span></div></div>`;}).join("");}
 function renderAnalysis(rows){
   const real=latestPerSerial(rows);          // UNIQUE UNITS only — latest test per serial, no re-test double-counting
   const byRes={},byGr={},byModel={},byTech={},faults={},bySup={},byLot={},modelFault={},faultTot={},modelDef={};
@@ -731,15 +787,15 @@ function renderAnalysis(rows){
   const topF=Object.entries(faultTot).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
   const topM=Object.entries(modelDef).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
   let matrix='<div class="muted">No model / fault data yet.</div>';
-  if(topF.length&&topM.length){matrix=`<div style="overflow-x:auto"><table class="matrix"><tr><th>Model</th>${topF.map(f=>`<th title="${f}">${f}</th>`).join("")}<th>Defective units</th></tr>`+
+  if(topF.length&&topM.length){matrix=`<div style="overflow-x:auto"><table class="matrix"><tr><th>Model</th>${topF.map(f=>`<th title="${escv(f)}">${escv(f)}</th>`).join("")}<th>Defective units</th></tr>`+
     topM.map(m=>{const fs=modelFault[m]||{};
-      return `<tr><td title="${m}">${m}</td>${topF.map(f=>{const c=fs[f]||0;return `<td class="${c>=3?'hot':c>0?'warm':''}">${c||""}</td>`;}).join("")}<td><b>${modelDef[m]||0}</b></td></tr>`;}).join("")+`</table></div>`;}
+      return `<tr><td title="${escv(m)}">${escv(m)}</td>${topF.map(f=>{const c=fs[f]||0;return `<td class="${c>=3?'hot':c>0?'warm':''}">${c||""}</td>`;}).join("")}<td><b>${modelDef[m]||0}</b></td></tr>`;}).join("")+`</table></div>`;}
   const days={};for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);days[d]=0;}
   rows.forEach(r=>{const d=(r.tested_at||"").slice(0,10);if(d in days)days[d]++;});   // throughput = actual test events
   const dv=Object.values(days),dmx=Math.max(1,...dv);
   const resColor={PASS:'var(--ok)',FAIL:'var(--bad)',REJECT:'var(--bad)',INCOMPLETE:'var(--watch)'};
   const resBars=Object.entries(byRes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const mx=Math.max(1,...Object.values(byRes));
-    return `<div class="bar"><div class="lab"><span class="pill ${k}">${k}</span></div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${resColor[k]||'var(--muted)'}"></div></div><div class="v">${v}</div></div>`;}).join("");
+    return `<div class="bar"><div class="lab"><span class="pill ${escv(k)}">${escv(k)}</span></div><div class="track"><div class="fill" style="width:${Math.round(v/mx*100)}%;background:${resColor[k]||'var(--muted)'}"></div></div><div class="v">${v}</div></div>`;}).join("");
   document.getElementById("analysisTab").innerHTML=`
     <div class="muted" style="font-size:12px;margin:2px 2px 12px">Every figure below counts <b>unique units</b> (latest test per serial) — re-tests are never double-counted. “Tests per day” is the only chart that counts actual test events.</div>
     <div class="grid2">
@@ -807,8 +863,8 @@ function renderLotReport(){
   host.innerHTML=`
     <div class="lotbar">
       <label style="font-weight:700;color:var(--navy)">📦 Lot</label>
-      <select id="lotPick">${lots.map(l=>`<option ${l===LOT_SEL?"selected":""}>${l}</option>`).join("")}</select>
-      <span class="chip">Supplier: ${sup}</span><span class="chip">PO: ${po}</span><span class="chip">${dchip(dts[0])} → ${dchip(dts[dts.length-1])}</span>
+      <select id="lotPick">${lots.map(l=>`<option ${l===LOT_SEL?"selected":""}>${escv(l)}</option>`).join("")}</select>
+      <span class="chip">Supplier: ${escv(sup)}</span><span class="chip">PO: ${escv(po)}</span><span class="chip">${dchip(dts[0])} → ${dchip(dts[dts.length-1])}</span>
       <div style="flex:1"></div>
       <div class="btnrow">
         <button class="btn orange" onclick="lotExport()">⤓ Export full lot (Excel)</button>
@@ -828,7 +884,7 @@ function renderLotReport(){
       <div class="chart"><h3>Models in this lot</h3>${bars(Object.fromEntries(models.map(m=>[m,rows.filter(r=>r.model===m).length])),'var(--navy2)',12)}</div>
     </div>
     <div class="report">
-      <div class="rhd"><div class="t">All units — Lot ${escv(LOT_SEL)}</div><div class="s">Supplier ${sup} · PO ${po} · ${sum.total} units (${sum.tested} tested, ${sum.notTested} not tested) · ${sum.defective} defective · ${sum.defectRate}% of tested · click a tested row for the full unit report</div></div>
+      <div class="rhd"><div class="t">All units — Lot ${escv(LOT_SEL)}</div><div class="s">Supplier ${escv(sup)} · PO ${escv(po)} · ${sum.total} units (${sum.tested} tested, ${sum.notTested} not tested) · ${sum.defective} defective · ${sum.defectRate}% of tested · click a tested row for the full unit report</div></div>
       <div style="overflow-x:auto"><table><thead><tr><th>Serial</th><th>Model</th><th>Supplier</th><th>Goods In</th><th>Screen</th><th>Overall</th><th>Result</th><th>Batt</th><th>Grade check</th><th>Faults reported</th><th>Tech</th><th>Tested</th></tr></thead><tbody>${trows}</tbody></table></div>
     </div>`;
   document.getElementById("lotPick").onchange=e=>{LOT_SEL=e.target.value;renderLotReport();};
@@ -864,34 +920,18 @@ async function openRowObj(r){if(!r)return;CURRENT=r;
   await ensureSnapshot(r);            // the list rows are slim — pull this one's detail
   document.getElementById("mTitle").textContent=`${r.model||"Unit"} · ${r.serial}`;
   const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
-  // Phone printing (labels/certificates sized for the Mac's spec fields) isn't built yet —
-  // hide those controls in mobile mode rather than print something that doesn't fit an iPhone.
-  document.getElementById("printLabelBtn").style.display=MODE==="mobile"?"none":"";
-  document.getElementById("printCertBtn").style.display=MODE==="mobile"?"none":"";
-  document.getElementById("printReportBtn").style.display=MODE==="mobile"?"none":"";
-  document.getElementById("printMktBtn").style.display=MODE==="mobile"?"none":"";
-  document.getElementById("labelSize").style.display=MODE==="mobile"?"none":"";
-  if(MODE==="mobile"){
-    const onDeviceRows=Object.entries(r.on_device||{}).map(([k,v])=>
-      `<tr><td>${escv(k)}</td><td style="font-weight:700;color:${v==='pass'?'var(--ok)':v==='fail'?'var(--bad)':'var(--muted)'}">${escv(String(v).toUpperCase())}</td></tr>`).join("");
-    document.getElementById("mBody").innerHTML=`
-      <dl class="kv">
-        ${row("Result",`<span class="pill ${escv(r.result||'OTHER')}">${escv(r.result)}</span> <span class="muted">(${escv(r.result_raw)})</span>`)}
-        ${row("Grade",`<span class="gr ${escv(r.grade)}">${escv(r.grade)}</span>`)}
-        ${row("Tested",escv(fmtTested(r)))}${row("Technician",escv(r.tech_disp))}${row("Warehouse",escv(r.warehouse))}</dl>
-      <div class="sec">Specification</div><dl class="kv">
-        ${row("Serial",escv(r.serial))}${row("Model",escv(r.model))}${row("IMEI",escv(r.imei))}${row("UDID",escv(r.udid))}
-        ${row("iOS",escv(r.ios))}${row("Storage",r.storage?r.storage+" GB":"")}</dl>
-      <div class="sec">Battery &amp; locks</div><dl class="kv">
-        ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
-        ${row("Activation Lock",r.activation_locked===true?'<span class="pill FAIL">LOCKED</span>':r.activation_locked===false?'<span class="pill PASS">clean</span>':"")}
-        ${row("MDM / Managed",r.managed===true?'<span class="pill FAIL">managed</span>':r.managed===false?'<span class="pill PASS">clean</span>':"")}
-        ${row("Carrier lock",r.carrier_locked===true?"LOCKED":r.carrier_locked===false?"clean":"")}
-        ${row("Blacklist",r.blacklisted===true?"BLACKLISTED":r.blacklisted===false?"clean":"")}</dl>
-      ${onDeviceRows?`<div class="sec">On-device tests (Probe)</div><table style="font-size:12px"><tbody>${onDeviceRows}</tbody></table>`:""}
-      ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
-      ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
-      ${historyHTML(r)}`;
+  // A phone prints its own three: the label (unit or box), the certificate and the test
+  // report — the ones saved with the test by the Mac that ran it (mobile.js). The Marketplace
+  // Proof and the component certificate are built from a MacBook's checklist and stay hidden.
+  const mob=MODE==="mobile";
+  document.getElementById("printMktBtn").style.display=mob?"none":"";
+  document.getElementById("printTestCertBtn").style.display=mob?"none":"";
+  document.getElementById("printCertBtn").title=mob?"Test certificate (A4) — phones that passed only":"Certificate of Quality (A4) — passed units only";
+  document.getElementById("printReportBtn").title=mob?"Test report (A4) — the whole test: every reason, lock, part and reading. Any result."
+    :"Full Test Report (A4) — every parameter, every test session on record, any result";
+  if(mob){
+    document.getElementById("mBody").innerHTML=YCMobile.detailHTML(r,{tested:fmtTested(r),history:historyHTML(r),loaded:!!(r._raw&&r._raw._full)});
+    fillLabelSizes();
   } else {
   document.getElementById("mBody").innerHTML=`
     <dl class="kv">
@@ -907,13 +947,13 @@ async function openRowObj(r){if(!r)return;CURRENT=r;
       ${row("Keyboard",[r.kbd_layout,r.kbd_language].filter(Boolean).map(escv).join(" · "))}</dl>
     <div class="sec">Battery &amp; performance</div><dl class="kv">
       ${row("Battery health",r.batt_h!=null?Math.min(100,r.batt_h)+"%":"")}${row("Cycles",r.batt_c)}
-      ${row("Condition",r.batt_cond)}${row("Wi-Fi",r.wifi)}${row("Performance",r.perf_score)}${row("Photos",r.photos||"")}</dl>
-    <div class="sec">Sourcing</div><dl class="kv">${row("Lot",r.lot_id)}${row("PO",r.po)}${row("Supplier",r.supplier)}</dl>
+      ${row("Condition",escv(r.batt_cond))}${row("Wi-Fi",escv(r.wifi))}${row("Performance",escv(r.perf_score))}${row("Photos",r.photos?escv(r.photos):"")}</dl>
+    <div class="sec">Sourcing</div><dl class="kv">${row("Lot",escv(r.lot_id))}${row("PO",escv(r.po))}${row("Supplier",escv(r.supplier))}</dl>
     <div id="wipeSec"></div>
     ${testExecHTML(r)}
     ${interactiveExecHTML(r)}
-    ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${r.faults}</div>`:""}
-    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${r.notes}</div>`:""}
+    ${r.faults?`<div class="sec">Faults / notes</div><div style="font-size:13px;color:var(--bad)">${escv(r.faults)}</div>`:""}
+    ${r.notes?`<div style="font-size:13px;margin-top:8px"><b>Notes:</b> ${escv(r.notes)}</div>`:""}
     ${historyHTML(r)}`;
   fillLabelSizes();
   loadWipeStatus(r.serial);
@@ -1080,7 +1120,7 @@ function labelHTML(r){
     ? `<div class="lftitle">⚠ FAULTS (${faults.length})</div><div class="lflist">${faults.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
     : `<div class="lftitle">RESULT</div><div class="lflist"><div class="lclean">✓ No faults<div class="sub">Clean pass — all checks OK</div></div></div>`;
   return `<div class="label">
-    <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.tech_disp||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${r.grade||"—"}</span></div>
+    <div class="lhead"><div class="lhl"><span class="res">${resTxt}</span><span class="ltech">${lblEsc((r.tech_disp||"—")+" · "+fmtTested(r))}</span></div><span class="gr">GRADE ${lblEsc(r.grade||"—")}</span></div>
     <div class="lsku"><span class="lskutag">SKU</span> ${lblEsc(r.sku||"—")}<span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
     <div class="lmodel">${model}</div>
     <div class="lbody">
@@ -1099,7 +1139,7 @@ function topLabelHTML(r){
     ? `<div class="lftitle">LCD FAULTS (${lcd.length})</div><div class="lflist">${lcd.map(f=>`<div class="lfl">• ${lblEsc(f)}</div>`).join("")}</div>`
     : `<div class="lftitle">LCD FAULTS</div><div class="lflist"><div class="lfl">—  No LCD faults recorded</div></div>`;
   return `<div class="label toplabel">
-    <div class="lhead"><div class="lhl"><span class="res">LCD · TOP LABEL</span></div><span class="gr">LCD GRADE ${r.display_grade||"—"}</span></div>
+    <div class="lhead"><div class="lhl"><span class="res">LCD · TOP LABEL</span></div><span class="gr">LCD GRADE ${lblEsc(r.display_grade||"—")}</span></div>
     <div class="lsku"><span class="lmodeltop">${model}</span><span class="lpo">PO ${lblEsc(r.po||"—")}</span></div>
     <div class="lbody"><div class="lright" style="border-left:0;padding-left:0;flex:1">${faultsBlk}</div></div>
     <div class="lbcwrap"><div class="lbc">${code39svg(r.serial,1.0,40)}</div><div class="lsn">${lblEsc(r.serial||"")}</div></div>
@@ -1115,9 +1155,16 @@ const LABEL_SIZES=[
   {id:"std4x2",n:"Standard 4×2 inch — 102×51mm",w:102,h:51},
 ];
 function curLabelSize(){const id=localStorage.getItem("qcLabelSize")||"dymoship";return LABEL_SIZES.find(s=>s.id===id)||LABEL_SIZES.find(s=>s.id==="dymoship")||LABEL_SIZES[0];}
+// A phone has two labels of its own — the unit label and the box label (mobile.js) — on
+// different media from the MacBook ones, so the choice is remembered separately.
+function phoneLabelId(){return YCMobile.labelSize(localStorage.getItem("qcLabelSizeMobile")||"unit").id;}
+function saveLabelSize(v){localStorage.setItem(MODE==="mobile"?"qcLabelSizeMobile":"qcLabelSize",v);}
 function fillLabelSizes(){const sel=document.getElementById("labelSize");if(!sel)return;
+  if(MODE==="mobile"){sel.innerHTML=YCMobile.LABEL_SIZES.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");sel.value=phoneLabelId();return;}
   sel.innerHTML=LABEL_SIZES.map(s=>`<option value="${s.id}">${s.n}</option>`).join("");sel.value=curLabelSize().id;}
-function printLabels(rows){if(!rows||!rows.length)return;const sz=curLabelSize();
+function printLabels(rows){if(!rows||!rows.length)return;
+  if(MODE==="mobile") return printPhoneLabels(rows);       // a phone's own label, not a MacBook's
+  const sz=curLabelSize();
   // Print in an ISOLATED iframe containing ONLY the labels — no dashboard layout can
   // spill onto extra pages, so it's exactly one page per label on any browser.
   // Vertical safe inset for the printer's non-printable dead zone (~1.5mm top/bottom on DyMo
@@ -1247,6 +1294,7 @@ function certHTML(r){
 async function printCert(r){
   await ensureSnapshot(r||CURRENT);
   r=r||CURRENT; if(!r)return;
+  if(MODE==="mobile") return printPhoneCert(r);
   if(r.result!=="PASS"){alert("Certificates are issued for PASSED units only. This unit is "+(r.result||"not passed")+".");return;}
   const css=`@page{size:A4;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:-apple-system,Arial,sans-serif;color:#112747}
     .cert{width:100%;border:3px solid #fbb03b;border-radius:6px;padding:22px 26px}
@@ -1356,6 +1404,7 @@ function fullReportHTML(r){
 }
 async function printFullReport(r){
   r=r||CURRENT; if(!r)return;
+  if(MODE==="mobile") return printPhoneReport(r);
   await ensureSnapshotsForSerial(r.serial);   // the report walks the unit's whole history
   const css=`@page{size:A4;margin:12mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -1620,9 +1669,70 @@ async function printTestCert(r){
   doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Component test certificate</title><style>${css}</style></head><body>${testCertHTML(r)}</body></html>`);doc.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}},350);
 }
+// ---- iPhone / iPad printouts ------------------------------------------------
+// The label, the certificate and the report are the ones the Mac saved with the test
+// (snapshot.print) — drawn by mobile.js, printed here. Nothing is re-judged on this page: a
+// certificate exists only if the Mac issued one, and it issues one only for a phone that passed.
+function printInFrame(frameId,title,css,body){
+  let f=document.getElementById(frameId);if(f)f.remove();
+  f=document.createElement("iframe");f.id=frameId;f.setAttribute("aria-hidden","true");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);const doc=f.contentWindow.document;
+  doc.open();doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escv(title)}</title><style>${css}</style></head><body>${body}</body></html>`);doc.close();
+  // The logo has to be in before the print dialog takes its picture of the page.
+  const go=()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert("Print failed: "+e.message);}};
+  const waits=[...doc.images].filter(i=>!i.complete).map(i=>new Promise(done=>{i.onload=i.onerror=done;}));
+  Promise.race([Promise.all(waits),new Promise(done=>setTimeout(done,2500))]).then(()=>setTimeout(go,250));
+}
+// What the two A4 pages need from this page: the logo for their paper, the QR drawer, and the
+// verify link built from wherever the portal is served.
+function phoneEnv(logo,extra){
+  return Object.assign({logo,qr:certQRSvg,verifyURL:(serial,testId)=>certVerifyURL({serial,client_uuid:testId})},extra||{});
+}
+// A printout is drawn from the full record. If the store could not be reached, say so —
+// never print the thinner label that the list's few fields would give.
+function phoneRecordsLoaded(rows){
+  const missing=rows.filter(r=>!(r&&r._raw&&r._raw._full)).length;
+  if(missing) alert(rows.length===1?"Couldn't load this record from the store — check the connection and try again."
+    :`Couldn't load ${missing} of ${rows.length} records from the store — check the connection and try again.`);
+  return !missing;
+}
+async function printPhoneLabels(rows){
+  if(!rows||!rows.length)return;
+  await ensureSnapshots(rows);
+  if(!phoneRecordsLoaded(rows))return;
+  const id=phoneLabelId();
+  printInFrame("printFrame","Labels",YCMobile.labelCSS(id),rows.map(r=>YCMobile.labelHTML(YCMobile.docs(r._raw).label,id)).join(""));
+}
+async function printPhoneCert(r){
+  if(!phoneRecordsLoaded([r]))return;
+  const d=YCMobile.docs(r._raw);
+  if(!d.certificate){alert("No certificate for this test. "+(d.certificateReason||"Certificates are issued for phones that pass."));return;}
+  printInFrame("certFrame","Test certificate — "+(r.serial||""),YCMobile.certificateCSS(),YCMobile.certificateHTML(d,phoneEnv("logo_light.png")));
+}
+async function printPhoneReport(r){
+  await ensureSnapshot(r);
+  if(!phoneRecordsLoaded([r]))return;
+  // Every test on record for this phone, oldest first: a retest never hides the test before it.
+  const history=RAW.filter(x=>x.serial&&r.serial&&x.serial.toUpperCase()===r.serial.toUpperCase())
+    .sort((a,b)=>(a.tested_at||"")>(b.tested_at||"")?1:-1)
+    .map(x=>({when:fmtTested(x),result:x.result,grade:x.grade,tech:x.tech_disp,why:x.save_reason,current:x.id===r.id}));
+  printInFrame("reportFrame","Test report — "+(r.serial||""),YCMobile.reportCSS(),
+    YCMobile.reportHTML(YCMobile.docs(r._raw),phoneEnv("logo_dark.png",{history})));
+}
 function printRow(e,id){e.stopPropagation();const r=ROWS.find(x=>x.id===id)||RAW.find(x=>x.id===id);if(r)printLabels([r]);}
 // Full QC history for one unit (all prior tests on the same serial).
 function histDetailHTML(x){const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+  if(MODE==="mobile") return `<dl class="kv" style="font-size:12px">
+    ${row("Result",escv(x.result))}${row("Grade",escv(x.grade)||"not picked")}
+    ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc":"")}
+    ${row("Tests on the phone",x.checks_total?`${x.checks_passed} of ${x.checks_total} passed`+(x.checks_failed?` · ${x.checks_failed} failed`:""):"")}
+    ${row("Carrier lock",escv(x.carrier_words))}${row("Parts &amp; Service",escv(x.parts))}
+    ${row("Faults",x.faults?`<span style="color:var(--bad)">${escv(x.faults)}</span>`:"none")}
+    ${row("To check",x.warnings?`<span style="color:var(--watch)">${escv(x.warnings)}</span>`:"")}
+    ${row("Saved because",escv(x.save_reason))}
+    ${row("Tested with",escv([x.probe_version?"Probe "+x.probe_version:"",x.app_build?"build "+x.app_build:""].filter(Boolean).join(" · ")))}
+    ${row("Notes",escv(x.notes))}</dl>`;
   return `<dl class="kv" style="font-size:12px">
     ${row("Result",escv(x.result_raw||x.result))}${row("Grade",`${escv(x.grade||"—")} (LCD ${escv(x.display_grade||"—")} / Body ${escv(x.body_grade||"—")})`)}
     ${row("Battery",x.batt_h!=null?Math.min(100,x.batt_h)+"% · "+(x.batt_c??"?")+" cyc"+(x.batt_cond?" · "+escv(x.batt_cond):""):"")}
@@ -1637,11 +1747,11 @@ function historyHTML(r){
     h.map(x=>`<div class="hrow${x.id===r.id?" open":""}">
       <div class="hsum" onclick="this.parentElement.classList.toggle('open')">
         <span class="hcar">▸</span>
-        <span style="min-width:150px">${fmtTested(x)}</span>
-        <span class="pill ${x.result||'OTHER'}">${x.result||'—'}</span>
-        <span class="gr ${x.grade}" style="min-width:18px">${x.grade||'—'}</span>
+        <span style="min-width:150px">${escv(fmtTested(x))}</span>
+        <span class="pill ${escv(x.result)||'OTHER'}">${escv(x.result)||'—'}</span>
+        <span class="gr ${escv(x.grade)}" style="min-width:18px">${escv(x.grade)||'—'}</span>
         <span style="flex:1;min-width:80px">${escv(x.tech_disp)||'—'}</span>
-        <span style="color:var(--bad);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.faults||''}</span>
+        <span style="color:var(--bad);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escv(x.faults)}</span>
       </div>
       <div class="hdet">${histDetailHTML(x)}</div>
     </div>`).join("");}
@@ -1661,13 +1771,16 @@ function renderBulkMenu(){const n=SEL.size,t=n||ROWS.length,lbl=n?`${n} selected
 function closeBulk(){document.getElementById("bulkMenu").classList.remove("show");}
 
 function csv(){
+  // Phones: a real .xlsx (the writer the lot report already uses), one row per record, with
+  // the fields a phone has — carrier lock in words, parts, why it was saved, which Probe.
+  if(MODE==="mobile"){
+    YCXlsx.downloadXlsx([{name:"iPhones",rows:YCMobile.exportRows(ROWS,{tested:fmtTested})}],
+      `YesAgain QC Records — iPhones ${new Date().toISOString().slice(0,10)}.xlsx`);
+    return;
+  }
   // FULL detail export — [field, Excel header]. Covers SKU, RAM, colour, keyboard,
   // LCD/body grade, CPU+speed, and Apple-Silicon CPU/GPU core counts.
-  const COLS=MODE==="mobile"?[["tested_at","Tested"],["serial","Serial"],["model","Model"],
-    ["imei","IMEI"],["udid","UDID"],["ios","iOS"],["storage","Storage (GB)"],["grade","Grade"],["result","Result"],
-    ["batt_h","Battery health %"],["batt_c","Battery cycles"],
-    ["activation_locked","Activation Lock"],["managed","MDM / Managed"],["carrier_locked","Carrier locked"],["blacklisted","Blacklisted"],
-    ["technician","Technician"],["warehouse","Warehouse"],["faults","Faults"],["notes","Notes"]]:
+  const COLS=
    [["tested_at","Tested"],["serial","Serial"],["model","Model"],["year","Year"],
     ["chip","CPU / Chip"],["cpu_speed","CPU speed"],["cpu_cores","CPU cores"],["gpu_cores","GPU cores"],
     ["memory","RAM (GB)"],["storage","SSD (GB)"],["colour","Colour"],["sku","YesAgain SKU"],["part_number","Part number"],
@@ -1701,6 +1814,9 @@ function setMode(m){if(MODE===m)return;MODE=m;
   if(m==="mobile"&&document.getElementById("lotTabBtn").classList.contains("on")){
     document.querySelector('.tab[data-t="records"]').click();}
   SEL.clear();LOT_SEL="";
+  // A phone is PASS, REVIEW or FAIL; a MacBook is PASS, FAIL, REJECT or INCOMPLETE.
+  const fr=document.getElementById("fResult");
+  fr.innerHTML='<option value="">All results</option>'+(m==="mobile"?["PASS","REVIEW","FAIL"]:["PASS","FAIL","REJECT","INCOMPLETE"]).map(x=>`<option>${x}</option>`).join("");
   loadCols();renderHead();load();}
 document.getElementById("devMac").onclick=()=>setMode("mac");
 document.getElementById("devMobile").onclick=()=>setMode("mobile");
@@ -1716,7 +1832,7 @@ async function rpc(fn,args){const r=await fetch(`${SUPA}/rest/v1/rpc/${fn}`,{met
   headers:{apikey:KEY,Authorization:"Bearer "+KEY,"Content-Type":"application/json"},body:JSON.stringify(args||{})});
   return r.ok?r.json():null;}
 async function fillLoginUsers(){const u=await rpc("app_login_users",{});
-  if(u&&u.length)document.getElementById("luser").innerHTML=u.map(x=>`<option value="${x.username}">${x.display_name||x.username}</option>`).join("");
+  if(u&&u.length)document.getElementById("luser").innerHTML=u.map(x=>`<option value="${escv(x.username)}">${escv(x.display_name||x.username)}</option>`).join("");
   else document.getElementById("luser").innerHTML='<option value="">No accounts found</option>';}
 async function doLogin(){const u=document.getElementById("luser").value,p=document.getElementById("lpin").value;
   const e=document.getElementById("lerr");if(!u){e.textContent="No account selected.";return;}e.textContent="Signing in…";
@@ -1766,10 +1882,13 @@ async function verifyView(serial,testId){
     } else {
       // Legacy serial-only QR (older certificates): show the latest test for the serial.
       rows=await (await fetch(`${SUPA}/rest/v1/audits?serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
+      // A phone's serial is looked up next — one indexed read. It used to come after the
+      // fallback below, which reads inside every MacBook snapshot and can run until the
+      // database gives up (HTTP 500): a phone's QR sat on "Checking…" for that long first.
+      if(!Array.isArray(rows)||!rows.length) await tryMobile(`serial=eq.${q}&order=tested_at.desc&limit=20`);
       if(!Array.isArray(rows)||!rows.length){  // fall back to serial stored only inside the snapshot
         rows=await (await fetch(`${SUPA}/rest/v1/audits?snapshot->>serial=eq.${q}&order=tested_at.desc&limit=20`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}})).json();
       }
-      if(!Array.isArray(rows)||!rows.length) await tryMobile(`serial=eq.${q}&order=tested_at.desc&limit=20`);
       if(!Array.isArray(rows)||!rows.length){
         B.innerHTML=`<div style="font-size:40px">🔍</div><h2 style="margin:8px 0 4px">No QC record found</h2><p style="color:#5b6b82;font-size:14px">No Yes Check inspection is on file for serial <b>${escv(serial)}</b>.</p>`;return;
       }
@@ -1777,10 +1896,11 @@ async function verifyView(serial,testId){
     const r=rows.map(mobile?flatMobile:flat).sort((a,b)=>(b.tested_at||"").localeCompare(a.tested_at||""))[0];
     const pass=r.result==="PASS";
     const gl={AA:"AA — premium",A:"A — like new","B+":"B+ — light wear",B:"B — light wear","C+":"C+ — visible wear",C:"C — visible wear",D:"D — heavy / parts"}[r.grade]||"";
-    const when=(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
+    // A phone row's local time is already written out ("05 Oct 2026, 22:10"): not cut to 16.
+    const when=mobile&&r.tested_local?r.tested_local:(r.tested_local||r.tested_at||"").replace("T"," ").slice(0,16);
     const passedChecks=mobile?Object.values(r.on_device||{}).filter(v=>v==="pass").length:0;
     const colour=mobile?((r._raw&&(r._raw.colour||(r._raw.snapshot||{}).colour))||""):r.colour;
-    const specParts=mobile?[r.storage?(r.storage>=1000?Math.round(r.storage/1000)+" TB":r.storage+" GB"):"",colour,r.ios?"iOS "+r.ios:""].filter(Boolean)
+    const specParts=mobile?[r.storage_text,colour,r.ios?"iOS "+r.ios:""].filter(Boolean)
                           :[r.chip,r.memory?r.memory+"GB":"",r.storage?r.storage+"GB SSD":"",r.colour].filter(Boolean);
     B.innerHTML=`
       <div style="font-size:46px;line-height:1">${pass?"✅":"⚠️"}</div>

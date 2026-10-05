@@ -1,0 +1,799 @@
+{
+ "id": "11111111-2222-4333-8444-555555555555",
+ "serial": "F7QTEST12ABC",
+ "test_number": 5,
+ "tested_at": "2026-10-05T18:10:01+00:00",
+ "technician": "Administrator",
+ "entity": "UAE",
+ "result": "fail",
+ "grade": "",
+ "colour": "",
+ "imei": "350000000000006",
+ "udid": "00008101-000000000000001E",
+ "ios": "27.0.1",
+ "storage_total_gb": "128 GB",
+ "battery_health": "100%",
+ "battery_cycles": "1",
+ "activation_locked": false,
+ "managed": true,
+ "carrier_locked": null,
+ "blacklisted": null,
+ "failed_categories": "parts_authenticity",
+ "defects": "",
+ "notes": null,
+ "photos": null,
+ "photo_count": null,
+ "on_device": {
+  "cpu": "pass",
+  "gps": "skip",
+  "mic": "pass",
+  "nfc": "pass",
+  "ram": "pass",
+  "wifi": "pass",
+  "power": "pass",
+  "torch": "pass",
+  "touch": "pass",
+  "ringer": "pass",
+  "battery": "pass",
+  "buttons": "pass",
+  "cameras": "pass",
+  "compass": "pass",
+  "display": "pass",
+  "haptics": "pass",
+  "sensors": "pass",
+  "speaker": "pass",
+  "storage": "pass",
+  "cellular": "skip",
+  "earpiece": "pass",
+  "micarray": "pass",
+  "nfc_scan": "pass",
+  "rotation": "pass",
+  "barometer": "pass",
+  "biometric": "pass",
+  "bluetooth": "pass",
+  "integrity": "pass",
+  "proximity": "pass",
+  "brightness": "pass",
+  "forcetouch": "pass",
+  "biometric_hw": "pass",
+  "display_caps": "pass",
+  "camera_quality": "pass",
+  "parts_authenticity": "fail"
+ },
+ "on_device_reasons": {
+  "parts_authenticity": "Repair not finished: Display — Restart & Finish Repair on the phone · Used part: Battery"
+ },
+ "wipe_certificate": null,
+ "parts_authenticity": null,
+ "snapshot": {
+  "ios": "27.0.1",
+  "sku": "",
+  "imei": "350000000000006",
+  "udid": "00008101-000000000000001E",
+  "grade": "",
+  "model": "iPhone 12 Pro",
+  "print": {
+   "label": {
+    "ios": "27.0.1",
+    "sim": "—",
+    "sku": "IP-12PRO-128-??",
+    "date": "05 Oct 2026",
+    "imei": "350000000000006",
+    "port": "2",
+    "tech": "Administrator",
+    "grade": "",
+    "model": "iPhone 12 Pro",
+    "parts": "Problem",
+    "tests": "32/35",
+    "colour": "",
+    "cycles": "1",
+    "faults": [
+     "✗ Display repair not finished",
+     "✗ 4 hardware-fault panics on record (Display (DCP))",
+     "! Stress / thermal test not run on the phone",
+     "! 4 kernel panics in the last 30 days — unexpected restarts",
+     "! Only 1 battery cycles — replaced or reset; health % can't be trusted until Parts & Service is checked"
+    ],
+    "icloud": "Off",
+    "serial": "F7QTEST12ABC",
+    "battery": "100%",
+    "verdict": "FAIL",
+    "capacity": "128 GB",
+    "warehouse": "YesAgain UAE",
+    "modelNumber": "NGM63VC/A"
+   },
+   "title": "iPhone 12 Pro · F7QTEST12ABC",
+   "report": {
+    "imei": "350000000000006",
+    "grade": "",
+    "locks": [
+     {
+      "k": "iCloud lock",
+      "v": "off",
+      "tone": "ok"
+     },
+     {
+      "k": "Carrier lock",
+      "v": "unlocked — Settings: no SIM restrictions",
+      "tone": "ok"
+     },
+     {
+      "k": "Mobile network",
+      "v": "sees Etisalat · 3G — emergency calls only",
+      "tone": "ok"
+     },
+     {
+      "k": "Wi-Fi signal",
+      "v": "-45 dBm — strong",
+      "tone": "ok"
+     },
+     {
+      "k": "Barometer",
+      "v": "1005.0 hPa",
+      "tone": "ok"
+     },
+     {
+      "k": "Activation",
+      "v": "Activated",
+      "tone": "ok"
+     },
+     {
+      "k": "Organisation lock (DEP)",
+      "v": "none",
+      "tone": "ok"
+     },
+     {
+      "k": "Passcode",
+      "v": "none",
+      "tone": ""
+     },
+     {
+      "k": "Bench management",
+      "v": "on, for testing — removed by Reset for customer",
+      "tone": ""
+     },
+     {
+      "k": "SIM",
+      "v": "SIM status: NotInserted",
+      "tone": ""
+     }
+    ],
+    "parts": [
+     {
+      "k": "Display",
+      "v": "Repair not finished",
+      "tone": "bad"
+     },
+     {
+      "k": "Battery",
+      "v": "Used (genuine, second-hand)",
+      "tone": "warn"
+     },
+     {
+      "k": "Camera",
+      "v": "Genuine Apple part",
+      "tone": "ok"
+     },
+     {
+      "k": "Face ID",
+      "v": "Genuine Apple part",
+      "tone": "ok"
+     }
+    ],
+    "tests": [
+     {
+      "name": "Motion (accel + gyro)",
+      "note": "measured: g=1.00, gyro=yes",
+      "result": "pass"
+     },
+     {
+      "name": "Magnetometer / compass",
+      "note": "183 µT",
+      "result": "pass"
+     },
+     {
+      "name": "Barometer",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Loudspeaker (tone test)",
+      "note": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+      "result": "pass"
+     },
+     {
+      "name": "Bottom mic (tone test)",
+      "note": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+      "result": "pass"
+     },
+     {
+      "name": "Earpiece (tone test)",
+      "note": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+      "result": "pass"
+     },
+     {
+      "name": "Cameras present",
+      "note": "5 cams (rear lenses: 3) — every camera gives a picture",
+      "result": "pass"
+     },
+     {
+      "name": "Flashlight",
+      "note": "measured: LED lit, camera brightness 94 → 255",
+      "result": "pass"
+     },
+     {
+      "name": "Wi-Fi",
+      "note": "connected · data over Wi-Fi 587 ms",
+      "result": "pass"
+     },
+     {
+      "name": "Bluetooth",
+      "note": "7 devices heard · strongest -33 dBm",
+      "result": "pass"
+     },
+     {
+      "name": "Cellular — SIM, network & data",
+      "note": "no SIM / no network — insert the test SIM to test cellular",
+      "result": "skip"
+     },
+     {
+      "name": "Face ID / Touch ID hardware",
+      "note": "Face ID available — sensor checked on the Face ID screen",
+      "result": "pass"
+     },
+     {
+      "name": "Display capabilities",
+      "note": "60Hz · @3x · 38% bright",
+      "result": "pass"
+     },
+     {
+      "name": "Battery & charging",
+      "note": "100% · full",
+      "result": "pass"
+     },
+     {
+      "name": "RAM speed",
+      "note": "15.3 GB/s copy",
+      "result": "pass"
+     },
+     {
+      "name": "CPU + thermal",
+      "note": "927 Mops/s · thermal nominal",
+      "result": "pass"
+     },
+     {
+      "name": "Storage read / write",
+      "note": "write 1512 · read 4726 MB/s",
+      "result": "pass"
+     },
+     {
+      "name": "GPS fix",
+      "note": "Location Services are off — Settings › Privacy & Security › Location Services",
+      "result": "skip"
+     },
+     {
+      "name": "NFC reader",
+      "note": "NFC reader present",
+      "result": "pass"
+     },
+     {
+      "name": "Jailbreak / integrity",
+      "note": "no jailbreak signs",
+      "result": "pass"
+     },
+     {
+      "name": "Display / dead pixels",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Multi-touch grid",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Vibration",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Volume buttons",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Brightness",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Face ID / Touch ID auth",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "3D / Haptic Touch",
+      "note": "Haptic Touch held",
+      "result": "pass"
+     },
+     {
+      "name": "Microphones (front/rear/bottom)",
+      "note": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+      "result": "pass"
+     },
+     {
+      "name": "Screen rotation",
+      "note": "measured: follows the accelerometer (g=1.00, gyro=yes)",
+      "result": "pass"
+     },
+     {
+      "name": "Proximity sensor",
+      "note": "saw the hand 2× · quiet with nothing near",
+      "result": "pass"
+     },
+     {
+      "name": "Camera quality (each lens)",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Parts authenticity",
+      "note": "Repair not finished: Display — Restart & Finish Repair on the phone · Used part: Battery",
+      "result": "fail"
+     },
+     {
+      "name": "Side / Power button",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "Ring / Silent switch",
+      "note": "",
+      "result": "pass"
+     },
+     {
+      "name": "NFC reader (tap a card)",
+      "note": "",
+      "result": "pass"
+     }
+    ],
+    "title": "iPhone 12 Pro · 128 GB",
+    "device": [
+     {
+      "k": "Model",
+      "v": "iPhone 12 Pro",
+      "tone": ""
+     },
+     {
+      "k": "Model number",
+      "v": "NGM63VC/A",
+      "tone": ""
+     },
+     {
+      "k": "Storage",
+      "v": "128 GB",
+      "tone": ""
+     },
+     {
+      "k": "Colour",
+      "v": "not picked",
+      "tone": "warn"
+     },
+     {
+      "k": "iOS",
+      "v": "27.0.1",
+      "tone": ""
+     },
+     {
+      "k": "SKU",
+      "v": "IP-12PRO-128-?? — colour and grade not picked",
+      "tone": "warn"
+     },
+     {
+      "k": "Bench port",
+      "v": "PORT 2",
+      "tone": ""
+     }
+    ],
+    "footer": "Tested 05 Oct 2026, 22:10 · Administrator · YesAgain UAE · bench PORT 2 · Bench Mac 2",
+    "greens": [
+     "Charges over USB (35 mA)",
+     "No iCloud lock",
+     "Battery 100%",
+     "Bench-managed while testing — Reset for customer clears it",
+     "Barometer 1005.0 hPa (room 1005.9)",
+     "Wi-Fi signal -45 dBm (bench -45)",
+     "Sees a mobile network (Etisalat · 3G)",
+     "Carrier lock: none (Settings: no SIM restrictions)"
+    ],
+    "health": [
+     {
+      "k": "Crash log scan",
+      "v": "done",
+      "tone": "ok"
+     },
+     {
+      "k": "Crashes on record",
+      "v": "5 (4 recent)",
+      "tone": "warn"
+     },
+     {
+      "k": "Crashes during the test",
+      "v": "none",
+      "tone": "ok"
+     },
+     {
+      "k": "Hardware crashes",
+      "v": "4 — Display (DCP)",
+      "tone": "bad"
+     },
+     {
+      "k": "Dropped off USB",
+      "v": "never",
+      "tone": ""
+     }
+    ],
+    "serial": "F7QTEST12ABC",
+    "tested": "2026-10-05T18:10:01Z",
+    "battery": [
+     {
+      "k": "Health",
+      "v": "100% — the cell measures 104% of its design capacity (replacement cell?)",
+      "tone": "warn"
+     },
+     {
+      "k": "Charge cycles",
+      "v": "1 (rated 80% at 500) · iOS counts 0",
+      "tone": ""
+     },
+     {
+      "k": "Capacity",
+      "v": "2815 of 2798 mAh",
+      "tone": ""
+     },
+     {
+      "k": "Battery serial",
+      "v": "TESTPART02XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Battery check",
+      "v": "Battery caution",
+      "tone": "warn"
+     },
+     {
+      "k": "Charge now",
+      "v": "100%",
+      "tone": ""
+     },
+     {
+      "k": "Charging",
+      "v": "charges (up to 35 mA)",
+      "tone": "ok"
+     }
+    ],
+    "verdict": "fail",
+    "blockers": [
+     "Parts authenticity check FAILED — Repair not finished: Display — Restart & Finish Repair on the phone · Used part: Battery",
+     "4 hardware-fault panics on record (Display (DCP))"
+    ],
+    "cosmetic": [],
+    "erasedOn": "05 Oct 2026",
+    "versions": "Probe 1.7 (49) · settings 202610051716 · bench build 202610052106",
+    "warnings": [
+     "Stress / thermal test not run on the phone",
+     "4 kernel panics in the last 30 days — unexpected restarts",
+     "Only 1 battery cycles — replaced or reset; health % can't be trusted until Parts & Service is checked"
+    ],
+    "clientUUID": "0123456789abcdef0123456789abcdef",
+    "partSerials": [
+     {
+      "k": "Logic board",
+      "v": "TESTPART04XXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Battery",
+      "v": "TESTPART02XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Display",
+      "v": "TESTPART03XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Rear camera",
+      "v": "TESTPART05XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Ultra-wide camera",
+      "v": "TESTPART12XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Telephoto camera",
+      "v": "TESTPART10XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Front camera",
+      "v": "TESTPART06XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Face ID camera",
+      "v": "TESTPART08XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Face ID projector",
+      "v": "TESTPART11XXXXXXX",
+      "tone": ""
+     },
+     {
+      "k": "Storage chip",
+      "v": "Test maker · TEST SSD · 0000000000",
+      "tone": ""
+     },
+     {
+      "k": "Modem",
+      "v": "TESTPART",
+      "tone": ""
+     },
+     {
+      "k": "Wireless board",
+      "v": "TESTPART09XX",
+      "tone": ""
+     }
+    ],
+    "cosmeticNote": "No cosmetic marks recorded on the phone.",
+    "gradeMeaning": "No cosmetic grade picked yet."
+   },
+   "certificate_reason": "This phone is FAIL: Display repair not finished."
+  },
+  "colour": "",
+  "entity": "UAE",
+  "failed": 1,
+  "faults": [],
+  "passed": 32,
+  "region": "VC/A",
+  "result": "fail",
+  "serial": "F7QTEST12ABC",
+  "defects": "",
+  "managed": true,
+  "app_kind": "yescheck_mobile",
+  "blockers": [
+   "Parts authenticity check FAILED — Repair not finished: Display — Restart & Finish Repair on the phone · Used part: Battery",
+   "4 hardware-fault panics on record (Display (DCP))"
+  ],
+  "sim_tray": "InsertedNoSIM",
+  "timezone": "Asia/Dubai",
+  "warnings": [
+   "Stress / thermal test not run on the phone",
+   "4 kernel panics in the last 30 days — unexpected restarts",
+   "Only 1 battery cycles — replaced or reset; health % can't be trusted until Parts & Service is checked"
+  ],
+  "app_build": "202610052106",
+  "on_device": {
+   "cpu": "pass",
+   "gps": "skip",
+   "mic": "pass",
+   "nfc": "pass",
+   "ram": "pass",
+   "wifi": "pass",
+   "power": "pass",
+   "torch": "pass",
+   "touch": "pass",
+   "ringer": "pass",
+   "battery": "pass",
+   "buttons": "pass",
+   "cameras": "pass",
+   "compass": "pass",
+   "display": "pass",
+   "haptics": "pass",
+   "sensors": "pass",
+   "speaker": "pass",
+   "storage": "pass",
+   "cellular": "skip",
+   "earpiece": "pass",
+   "micarray": "pass",
+   "nfc_scan": "pass",
+   "rotation": "pass",
+   "barometer": "pass",
+   "biometric": "pass",
+   "bluetooth": "pass",
+   "integrity": "pass",
+   "proximity": "pass",
+   "brightness": "pass",
+   "forcetouch": "pass",
+   "biometric_hw": "pass",
+   "display_caps": "pass",
+   "camera_quality": "pass",
+   "parts_authenticity": "fail"
+  },
+  "quickSave": true,
+  "timestamp": "2026-10-05T18:10:01Z",
+  "warehouse": "YesAgain Group",
+  "wifi_band": "5 GHz",
+  "wifi_live": true,
+  "bench_port": 2,
+  "department": "qc",
+  "probe_live": true,
+  "sim_status": "NotInserted",
+  "technician": "Administrator",
+  "client_uuid": "0123456789abcdef0123456789abcdef",
+  "product_sku": "IP-12PRO-128-??",
+  "save_reason": "phone left the bench",
+  "wifi_snr_db": 31,
+  "bench_checks": [
+   {
+    "d": "off",
+    "r": "pass",
+    "id": "icloud",
+    "name": "iCloud lock"
+   },
+   {
+    "d": "unlocked — Settings: no SIM restrictions",
+    "r": "pass",
+    "id": "carrier",
+    "name": "Carrier lock"
+   },
+   {
+    "d": "sees Etisalat · 3G — emergency calls only",
+    "r": "pass",
+    "id": "network",
+    "name": "Mobile network"
+   },
+   {
+    "d": "-45 dBm — strong",
+    "r": "pass",
+    "id": "wifi",
+    "name": "Wi-Fi signal"
+   },
+   {
+    "d": "1005.0 hPa",
+    "r": "pass",
+    "id": "barometer",
+    "name": "Barometer"
+   }
+  ],
+  "carrier_lock": "unlocked (Settings: no SIM restrictions)",
+  "checks_clean": [
+   "Charges over USB (35 mA)",
+   "No iCloud lock",
+   "Battery 100%",
+   "Bench-managed while testing — Reset for customer clears it",
+   "Barometer 1005.0 hPa (room 1005.9)",
+   "Wi-Fi signal -45 dBm (bench -45)",
+   "Sees a mobile network (Etisalat · 3G)",
+   "Carrier lock: none (Settings: no SIM restrictions)"
+  ],
+  "dep_enrolled": false,
+  "model_number": "NGM63",
+  "part_serials": {
+   "Modem": "TESTPART",
+   "Battery": "TESTPART02XXXXXXX",
+   "Display": "TESTPART03XXXXXXX",
+   "Logic board": "TESTPART04XXXXXX",
+   "Rear camera": "TESTPART05XXXXXXX",
+   "Front camera": "TESTPART06XXXXXXX",
+   "Storage chip": "Test maker · TEST SSD · 0000000000",
+   "Face ID camera": "TESTPART08XXXXXXX",
+   "Wireless board": "TESTPART09XX",
+   "Telephoto camera": "TESTPART10XXXXXXX",
+   "Face ID projector": "TESTPART11XXXXXXX",
+   "Ultra-wide camera": "TESTPART12XXXXXXX"
+  },
+  "parts_source": "both",
+  "passcode_set": false,
+  "product_type": "iPhone13,3",
+  "tested_local": "2026-10-05 22:10:01",
+  "usb_dropouts": 0,
+  "wifi_channel": 44,
+  "barometer_hpa": 1005,
+  "charging_seen": true,
+  "parts_service": [
+   {
+    "part": "Display",
+    "status": "unfinished"
+   },
+   {
+    "part": "Battery",
+    "status": "used"
+   },
+   {
+    "part": "Camera",
+    "status": "genuine"
+   },
+   {
+    "part": "Face ID",
+    "status": "genuine"
+   }
+  ],
+  "previous_save": "fedcba9876543210fedcba9876543210",
+  "probe_version": "1.7 (49)",
+  "wifi_rssi_dbm": -45,
+  "battery_charge": "100%",
+  "battery_cycles": "1",
+  "battery_health": "100%",
+  "battery_serial": "TESTPART02XXXXXXX",
+  "charge_peak_ma": 35,
+  "marketing_name": "iPhone 12 Pro",
+  "mobile_network": "Etisalat",
+  "photosIncluded": false,
+  "battery_max_mah": 2815,
+  "crash_scan_done": true,
+  "find_my_account": "",
+  "hardware_panics": 4,
+  "activation_state": "Activated",
+  "panics_on_record": 5,
+  "storage_total_gb": "128 GB",
+  "activation_locked": false,
+  "battery_gauge_pct": 101,
+  "battery_phone_pct": 104,
+  "battery_state_ios": 0,
+  "failed_categories": "parts_authenticity",
+  "on_device_details": {
+   "cpu": "927 Mops/s · thermal nominal",
+   "gps": "Location Services are off — Settings › Privacy & Security › Location Services",
+   "mic": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+   "nfc": "NFC reader present",
+   "ram": "15.3 GB/s copy",
+   "wifi": "connected · data over Wi-Fi 587 ms",
+   "torch": "measured: LED lit, camera brightness 94 → 255",
+   "battery": "100% · full",
+   "cameras": "5 cams (rear lenses: 3) — every camera gives a picture",
+   "compass": "183 µT",
+   "sensors": "measured: g=1.00, gyro=yes",
+   "speaker": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+   "storage": "write 1512 · read 4726 MB/s",
+   "cellular": "no SIM / no network — insert the test SIM to test cellular",
+   "earpiece": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+   "micarray": "both speakers ✓ · earpiece ✓ · mics ✓ bottom/front/rear · 3.35 kHz",
+   "rotation": "measured: follows the accelerometer (g=1.00, gyro=yes)",
+   "bluetooth": "7 devices heard · strongest -33 dBm",
+   "integrity": "no jailbreak signs",
+   "proximity": "saw the hand 2× · quiet with nothing near",
+   "forcetouch": "Haptic Touch held",
+   "biometric_hw": "Face ID available — sensor checked on the Face ID screen",
+   "display_caps": "60Hz · @3x · 38% bright"
+  },
+  "on_device_reasons": {
+   "parts_authenticity": "Repair not finished: Display — Restart & Finish Repair on the phone · Used part: Battery"
+  },
+  "probe_last_answer": "2026-10-05T18:09:59Z",
+  "wifi_antenna0_dbm": -45,
+  "wifi_antenna1_dbm": -50,
+  "battery_cycles_ios": 0,
+  "battery_design_mah": 2798,
+  "cosmetic_grade_cap": "",
+  "panics_during_test": 0,
+  "battery_nominal_mah": 2803,
+  "battery_peak_temp_c": null,
+  "battery_rest_temp_c": null,
+  "guidedTestsIncluded": false,
+  "mobile_network_plmn": "424-02",
+  "mobile_network_tech": "3G",
+  "technician_username": "admin",
+  "hardware_panic_parts": [
+   "Display (DCP)"
+  ],
+  "battery_health_source": "phone",
+  "mobile_network_status": "EmergencyOnly",
+  "probe_settings_version": 202610051716
+ },
+ "changes_from_previous": {
+  "result": {
+   "from": "review",
+   "to": "fail"
+  },
+  "battery_health": {
+   "from": "99%",
+   "to": "100%"
+  }
+ },
+ "client_uuid": "0123456789abcdef0123456789abcdef",
+ "created_at": "2026-10-05T18:13:19.084269+00:00"
+}

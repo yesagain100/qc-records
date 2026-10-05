@@ -17,8 +17,8 @@ test("no sibling script is left to 404 on a single-file host", () => {
     "every local script must be inlined");
 });
 
-test("the three modules are actually present in the bundle", () => {
-  ["lotreport.js", "xlsx.js", "certificate.js"].forEach(n =>
+test("the four modules are actually present in the bundle", () => {
+  ["lotreport.js", "xlsx.js", "certificate.js", "mobile.js"].forEach(n =>
     assert.ok(dist.includes("/* inlined from " + n + " */"), n + " inlined"));
 });
 
@@ -33,8 +33,10 @@ test("the bundle's own copies of the modules still work", () => {
     .filter(b => b.includes("/* inlined from "))
     .forEach(b => vm.runInContext(b, ctx));
 
-  const L = ctx.window.YCLotReport, X = ctx.window.YCXlsx, C = ctx.window.YCCertificate;
-  assert.ok(L && X && C, "all three modules attach to window");
+  const L = ctx.window.YCLotReport, X = ctx.window.YCXlsx, C = ctx.window.YCCertificate, P = ctx.window.YCMobile;
+  assert.ok(L && X && C && P, "all four modules attach to window");
+  assert.equal(P.flat({ result: "review", storage_total_gb: "1 TB", snapshot: {} }).result, "REVIEW",
+    "phone shaping works from the bundle");
 
   const rows = L.lotRows({
     units: [], supplierRows: [{ serial: "C02AAA", supplier_grade: "B", lot_id: "L1" }],
@@ -58,4 +60,9 @@ test("logos stay relative so they resolve beside the page", () => {
   assert.ok(dist.includes('src="logo_orange.png"'));
   assert.ok(fs.existsSync(path.join(root, "dist", "logo_orange.png")));
   assert.ok(fs.existsSync(path.join(root, "dist", "logo_white.png")));
+  // The phone certificate (white paper) and report (navy band) use the two-colour logo.
+  ["logo_light.png", "logo_dark.png"].forEach(f => {
+    assert.ok(dist.includes('"' + f + '"'), f + " is referenced by the page");
+    assert.ok(fs.existsSync(path.join(root, "dist", f)), f + " ships beside the page");
+  });
 });
