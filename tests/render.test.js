@@ -171,7 +171,8 @@ function filterContext(rows) {
     escv: v => String(v == null ? "" : v), console, _el: el
   };
   vm.createContext(c);
-  vm.runInContext("var sortK='tested_at', sortDir=-1;", c);
+  // DEPARTMENTS empty = the departments table was not reachable: options come from the records.
+  vm.runInContext("var sortK='tested_at', sortDir=-1, DEPARTMENTS=[];", c);
   vm.runInContext(extractFn(html, "current"), c);
   vm.runInContext(extractFn(html, "fillTechs"), c);
   return c;
@@ -217,7 +218,7 @@ test("the group dropdown is built from the data, not a fixed list", () => {
   const html_ = c._el("fDept").innerHTML;
   assert.ok(html_.includes("goods_in"));
   assert.ok(html_.includes("qc"));
-  assert.ok(html_.includes("All groups"));
+  assert.ok(html_.includes("All departments"));
 });
 
 test("the group dropdown keeps the current selection across a refresh", () => {

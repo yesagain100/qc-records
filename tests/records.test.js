@@ -30,6 +30,9 @@ function sandbox(extra) {
 
 function load(ctx, ...names) {
   ["SNAP_FIELDS", "LIST_COLS"].forEach(c => vm.runInContext(extractConst(html, c), ctx));
+  // A page-level `let` the lifted functions read (ensureSnapshot): does `audits` have its own
+  // `details` column. var, so it is a property of the sandbox like the page's globals.
+  vm.runInContext("var DETAILS_COL=true;", ctx);
   names.forEach(n => vm.runInContext(extractFn(html, n), ctx));
   return ctx;
 }
@@ -135,6 +138,18 @@ test("the full snapshot is fetched once per record, then cached", async () => {
   await ctx.ensureSnapshot(row);
   assert.equal(calls, 1, "a second open must not re-download the snapshot");
   assert.equal(row._raw.snapshot.details.battery_drain.ran, true);
+});
+
+test("a database without the `details` column is asked for it once, not once per record", async () => {
+  const asked = [];
+  const ctx = sandbox({ fetch: async url => { asked.push(url);
+    return url.includes("details") ? { ok: false, status: 400 }
+                                   : { ok: true, json: async () => [{ snapshot: { details: { battery_drain: RAN } } }] }; } });
+  load(ctx, "ensureSnapshot");
+  await ctx.ensureSnapshot({ id: "a", _raw: { id: "a" } });
+  await ctx.ensureSnapshot({ id: "b", _raw: { id: "b" } });
+  assert.equal(asked.filter(u => u.includes("details")).length, 1);
+  assert.equal(asked.length, 3, "the failed probe, its retry, then one plain request for the next record");
 });
 
 test("a record whose snapshot cannot be loaded is left readable, not broken", async () => {
