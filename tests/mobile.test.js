@@ -255,6 +255,55 @@ test("a phone that passed gets the six spec boxes and the solid PASS", () => {
   assert.ok(out.includes("height:7.4mm"), "full-height barcodes when there are no fault lines");
 });
 
+// ---- cosmetic marks on the unit label
+test("cosmetic marks are grouped by face and repeats are counted", () => {
+  assert.deepEqual(M.cosmeticGroups("Glass cracked (Front); Glass cracked (Front); Frame dent (Front); Frame scratch (Right)"),
+    ["Front: Glass cracked ×2, Frame dent", "Right: Frame scratch"]);
+  assert.deepEqual(M.cosmeticGroups(""), []);
+  assert.deepEqual(M.cosmeticGroups("Scuff"), ["Body: Scuff"], "a mark with no face is still named");
+});
+
+test("the unit label mentions the cosmetic defects, whatever the verdict", () => {
+  const groups = ["Front: Glass cracked ×2, Frame dent", "Right: Frame scratch"];
+  const pass = Object.assign({}, M.docs(ROW).label, { verdict: "PASS", faults: [], cosmetic: groups });
+  const out = M.labelHTML(pass, "unit");
+  assert.ok(out.includes("COSMETIC  Front: Glass cracked ×2, Frame dent · Right: Frame scratch"));
+  assert.ok(out.includes('class="specs"'), "a phone that passed keeps its six boxes too");
+  const fail = M.labelHTML(Object.assign({}, M.docs(ROW).label, { cosmetic: groups }), "unit");
+  assert.ok(fail.includes("COSMETIC  Front: Glass cracked"), "a failed phone's label carries them under its faults");
+  assert.ok(fail.includes('class="flt"'));
+  assert.ok(!M.labelHTML(M.docs(ROW).label, "unit").includes("COSMETIC"), "no marks, no line");
+});
+
+test("many marks take two lines and the barcodes keep their numbers on the label", () => {
+  const many = ["Front: Glass cracked ×2, Frame dent", "Right: Frame scratch", "Left: Frame scratch",
+                "Back: Back glass scratch, Camera lens scratch", "Top: Frame dent", "Bottom: Frame scratch"];
+  const lines = M.cosmeticLines(many);
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].startsWith("COSMETIC  Front:"));
+  assert.ok(lines[0].length <= 88, "whole groups to a line while they fit");
+  many.forEach(g => assert.equal(lines.filter(l => l.includes(g)).length, 1, "each group sits whole on one line: " + g));
+  assert.ok(many.some(g => lines[1].startsWith(g)), "the second line starts with a whole group");
+  const out = M.labelHTML(Object.assign({}, M.docs(ROW).label, { verdict: "PASS", faults: [], cosmetic: many }), "unit");
+  const bar = +out.match(/class="bars" style="height:([0-9.]+)mm"/)[1];
+  assert.ok(bar >= 6 && bar < 7.4, "barcodes give up a little room, not their readability: " + bar);
+  // nothing may reach below the footer rule: 2.4 + 9 + 5.3 + 6.6 box + lines + two barcodes with numbers
+  const used = 2.4 + 9 + 5.3 + 6.6 + (0.95 + 2 * 2.15 + 0.8) + 2 * (bar + 2.9) + 0.8;
+  assert.ok(used <= 49.3 + 0.01, "fits above the footer: " + used.toFixed(2));
+});
+
+test("a test saved before the label carried the marks still prints them", () => {
+  const row = clone(ROW);
+  row.defects = "Frame scratch (Right); Frame scratch (Right)"; row.snapshot.defects = row.defects;
+  assert.deepEqual(M.docs(row).label.cosmetic, ["Right: Frame scratch ×2"], "worked out from its saved list of marks");
+  delete row.snapshot.print;
+  assert.deepEqual(M.docs(row).label.cosmetic, ["Right: Frame scratch ×2"], "and when the printouts are rebuilt");
+  const kept = clone(ROW);
+  kept.snapshot.print.label.cosmetic = ["Back: Dent"];
+  kept.defects = "Frame scratch (Right)";
+  assert.deepEqual(M.docs(kept).label.cosmetic, ["Back: Dent"], "the Mac's own groups win when it saved them");
+});
+
 test("the box label carries the IMEI barcode, the grade, the port and the SKU", () => {
   const out = M.labelHTML(M.docs(ROW).label, "box");
   assert.ok(out.includes('class="pl box"'));

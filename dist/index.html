@@ -937,7 +937,7 @@
   // ------------------------------------------------------------------ the printouts of one test
   var LABEL0 = { verdict: "", model: "", capacity: "", colour: "", modelNumber: "", ios: "", grade: "",
     port: "", sku: "", battery: "—", cycles: "—", parts: "—", sim: "—", icloud: "—", tests: "—",
-    faults: [], imei: "", serial: "", date: "", tech: "", warehouse: "" };
+    faults: [], cosmetic: [], imei: "", serial: "", date: "", tech: "", warehouse: "" };
   var REPORT0 = { verdict: "review", grade: "", gradeMeaning: "", title: "", serial: "", imei: "",
     blockers: [], warnings: [], greens: [], device: [], locks: [], battery: [], health: [], parts: [],
     partSerials: [], tests: [], cosmetic: [], cosmeticNote: "", footer: "", versions: "", tested: "",
@@ -949,6 +949,42 @@
       out[k] = v == null ? (Array.isArray(base[k]) ? [] : base[k]) : v;
     });
     return out;
+  }
+
+  // ------------------------------------------------------------------ cosmetic marks on the label
+  // The marks tapped on the phone, as the unit label prints them (owner, 5 Oct 2026: "The product label
+  // need to also mention any cosmetic defects"): grouped by the face they are on, in the order the faces
+  // were marked, a repeated mark counted once with ×N — "Front: Glass cracked ×2, Frame dent". The Mac
+  // saves the groups with the label from that day on; for a test saved before, they are worked out here
+  // from its list of marks ("Glass cracked (Front); Frame dent (Front)") the same way.
+  function cosmeticGroups(defects) {
+    var faces = [], byFace = {};
+    str(defects).split(";").map(trim).filter(Boolean).forEach(function (item) {
+      var m = /^(.*) \(([^()]*)\)$/.exec(item);
+      var label = m ? trim(m[1]) : item, face = m && trim(m[2]) ? trim(m[2]) : "Body";
+      if (!label) return;
+      if (!byFace[face]) { byFace[face] = []; faces.push(face); }
+      var hit = byFace[face].filter(function (x) { return x[0] === label; })[0];
+      if (hit) hit[1]++; else byFace[face].push([label, 1]);
+    });
+    return faces.map(function (f) {
+      return f + ": " + byFace[f].map(function (x) { return x[1] > 1 ? x[0] + " ×" + x[1] : x[0]; }).join(", ");
+    });
+  }
+  // One line, two when there are many: whole groups to a line while they fit (about 88 letters at this
+  // size); what does not fit on the second is cut with "…" by the label itself.
+  var COSMETIC_LINE = 88;
+  function cosmeticLines(groups) {
+    groups = arr(groups).map(str).filter(Boolean);
+    if (!groups.length) return [];
+    var lines = ["COSMETIC  "];
+    groups.forEach(function (g, i) {
+      var cur = lines[lines.length - 1];
+      var piece = (/ {2}$/.test(cur) || !cur ? "" : " · ") + g;
+      if ((cur + piece).length <= COSMETIC_LINE || lines.length === 2 || i === 0) lines[lines.length - 1] = cur + piece;
+      else lines.push(g);
+    });
+    return lines;
   }
 
   /** The whole record: the snapshot, with the row's own columns laid over it. */
@@ -972,8 +1008,10 @@
     var rec = record(raw), p = rec.print;
     var tz = rec.timezone || "";
     if (p && p.label && p.report) {
+      var kept = fill(LABEL0, p.label);
+      if (!arr(kept.cosmetic).length) kept.cosmetic = cosmeticGroups(rec.defects);     // saved before the label carried them
       return { kept: true, tz: tz, title: p.title || [rec.model, rec.serial].filter(Boolean).join(" · "),
-               label: fill(LABEL0, p.label), report: fill(REPORT0, p.report),
+               label: kept, report: fill(REPORT0, p.report),
                certificate: p.certificate || null, certificateReason: str(p.certificate_reason) };
     }
     var results = (rec.on_device && typeof rec.on_device === "object") ? rec.on_device : {};
@@ -994,6 +1032,7 @@
       icloud: locked === true ? "ON" : (locked === false ? "Off" : "—"),
       tests: ids.length ? ids.filter(function (k) { return results[k] === "pass"; }).length + "/" + ids.length : "—",
       faults: blockers.map(function (b) { return "✗ " + b; }).concat(warnings.map(function (w) { return "! " + w; })),
+      cosmetic: cosmeticGroups(rec.defects),
       date: longDate(when, tz, false), tech: rec.technician, warehouse: rec.warehouse || rec.entity
     });
     var known = TEST_ORDER.filter(function (id) { return results[id] != null; });
@@ -1116,7 +1155,8 @@
       ".pl.unit .specs .v{font-size:2.6mm;font-weight:700;line-height:3.3mm}" +
       ".pl.unit .flt{border:.35mm solid #000;border-radius:.8mm;padding:.4mm 1mm}" +
       ".pl.unit .flt div{font-size:1.8mm;font-weight:700;line-height:2.05mm}" +
-      ".pl.unit .bcr{margin-top:1.3mm}.pl.unit .bcr+.bcr{margin-top:.8mm}" +
+      ".pl.unit .cos{margin-top:.95mm}.pl.unit .cos div{font-size:1.8mm;font-weight:700;line-height:2.15mm}" +
+      ".pl.unit .bcr{margin-top:1.3mm}.pl.unit .cos+.bcr,.pl.unit .bcr+.bcr{margin-top:.8mm}" +
       ".pl.unit .bcr .k{width:6mm;font-size:1.7mm}" +
       ".pl.unit .bcr .n{font-size:2mm;line-height:2.6mm}" +
       ".pl.unit .ft{position:absolute;left:3mm;right:3mm;bottom:0;height:4.2mm;border-top:.3mm solid #000;padding-top:.4mm;display:flex;justify-content:space-between;gap:3mm;font-size:1.8mm;line-height:2.4mm;white-space:nowrap}" +
@@ -1161,8 +1201,16 @@
     var pass = u.verdict === "PASS";
     var faults = arr(u.faults).slice(0, 3);
     var showFaults = !pass && faults.length > 0;
-    // The barcodes give up the room the fault lines need, exactly as on the Mac's label.
-    var barMM = showFaults ? Math.round((6.9 - 0.9 * Math.max(0, faults.length - 1)) * 100) / 100 : 7.4;
+    var cosmetic = cosmeticLines(u.cosmetic);
+    // The barcodes give up the room the fault lines need, exactly as on the Mac's label — and are as tall
+    // as planned unless the cosmetic lines have taken their room too. In millimetres from the top edge:
+    // 2.4 margin, 9 heading, 5.3 SKU, the box, the lines, two barcodes with their numbers (2.9 each) and
+    // 0.8 between them, and nothing below 49.3 (the footer rule sits at 49.8).
+    var planned = showFaults ? 6.9 - 0.9 * Math.max(0, faults.length - 1) : 7.4;
+    var box = showFaults ? 1.5 + 2.05 * faults.length : 6.6;
+    var above = 2.4 + 9 + 5.3 + box + (cosmetic.length ? 0.95 + 2.15 * cosmetic.length + 0.8 : 1.3);
+    var room = (49.3 - above - 0.8 - 2 * 2.9) / 2;
+    var barMM = Math.round(Math.max(4.4, Math.min(planned, room)) * 100) / 100;
     var sub = [u.colour, u.modelNumber, u.ios ? "iOS " + u.ios : ""].filter(Boolean).join(" · ");
     var middle;
     if (showFaults) {
@@ -1180,6 +1228,7 @@
       '<div class="ttl"><div class="t1 one">' + esc(title) + '</div><div class="t2 one">' + esc(sub) + "</div></div>" +
       square("GRADE", u.grade, false) + square("PORT", u.port, true) + "</div>" +
       '<div class="sku mono">SKU  ' + (esc(u.sku) || "—") + "</div>" + middle +
+      (cosmetic.length ? '<div class="cos">' + cosmetic.map(function (l) { return '<div class="one">' + esc(l) + "</div>"; }).join("") + "</div>" : "") +
       barcodeRow("IMEI", u.imei, barMM) + barcodeRow("S/N", u.serial, barMM) +
       '<div class="ft"><span class="one">' + esc(left) + "</span><span>" + esc(right) + "</span></div></div>";
   }
@@ -1524,7 +1573,7 @@
     flat: flat, verdict: verdict, carrier: carrier, partsSummary: partsSummary,
     storageText: storageText, storageGB: storageGB, faultTag: faultTag, testName: testName,
     docs: docs, record: record, reportId: reportId, certificateId: certificateId, longDate: longDate, localStamp: localStamp,
-    code128: code128, code128Values: code128Values,
+    code128: code128, code128Values: code128Values, cosmeticGroups: cosmeticGroups, cosmeticLines: cosmeticLines,
     LABEL_SIZES: LABEL_SIZES, labelSize: labelSize, labelCSS: labelCSS, labelHTML: labelHTML,
     certificateCSS: certificateCSS, certificateHTML: certificateHTML,
     reportCSS: reportCSS, reportHTML: reportHTML, detailHTML: detailHTML, exportRows: exportRows
